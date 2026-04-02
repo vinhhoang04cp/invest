@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/stock_symbols.dart';
 import '../models/market_index.dart';
 import '../models/market_news.dart';
 import '../models/stock.dart';
+import '../models/stock_symbol_model.dart';
 import '../services/api_service.dart';
 import '../state/watchlist_provider.dart';
 import '../widgets/mini_sparkline.dart';
@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
         indices: const <MarketIndex>[],
         watchlist: const <Stock>[],
         news: const <MarketNews>[],
-        trackedSymbols: const <StockSymbol>[],
+        trackedSymbols: const <StockSymbolModel>[],
       ),
     );
   }
@@ -80,11 +80,11 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<_HomeScreenData> _loadData(List<StockSymbol> trackedSymbols) async {
+  Future<_HomeScreenData> _loadData(List<StockSymbolModel> trackedSymbols) async {
     final List<MarketIndex> indices = await _apiService.fetchMarketIndices();
     final List<Stock> watchlist = trackedSymbols.isEmpty
         ? <Stock>[]
-        : await _apiService.fetchWatchlist(symbols: trackedSymbols);
+        : await _apiService.fetchWatchlist(symbolModels: trackedSymbols);
     final List<MarketNews> news = await _apiService.fetchMarketNews();
     return _HomeScreenData(
       indices: indices,
@@ -257,11 +257,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWatchlistSliver(BuildContext context, _HomeScreenData data) {
     final Map<String, Stock> stockMap = <String, Stock>{
-      for (final Stock stock in data.watchlist) stock.symbol: stock,
+      for (final Stock stock in data.watchlist) stock.symbol.toUpperCase(): stock,
     };
     final List<Stock> ordered = <Stock>[];
-    for (final StockSymbol symbol in data.trackedSymbols) {
-      final Stock? stock = stockMap[symbol.displaySymbol];
+    for (final StockSymbolModel symbol in data.trackedSymbols) {
+      final Stock? stock = stockMap[symbol.displaySymbol.toUpperCase()];
       if (stock != null) {
         ordered.add(stock);
       }
@@ -400,6 +400,7 @@ class _WatchlistCard extends StatelessWidget {
                   width: 110,
                   child: MiniSparkline(
                     symbol: stock.symbol,
+                    apiSymbol: stock.apiSymbol,
                     lineColor: isPositive ? const Color(0xFF81C784) : const Color(0xFFEF9A9A),
                   ),
                 ),
@@ -437,5 +438,5 @@ class _HomeScreenData {
   final List<MarketIndex> indices;
   final List<Stock> watchlist;
   final List<MarketNews> news;
-  final List<StockSymbol> trackedSymbols;
+  final List<StockSymbolModel> trackedSymbols;
 }

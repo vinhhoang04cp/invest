@@ -9,6 +9,7 @@ import '../models/market_news.dart';
 import '../models/portfolio.dart';
 import '../models/stock.dart';
 import '../models/user.dart';
+import '../models/stock_symbol_model.dart';
 
 class ApiService {
   ApiService._internal({http.Client? client}) : _client = client ?? http.Client();
@@ -61,6 +62,29 @@ class ApiService {
     _vietnamSymbolMap = <String, String>{};
   }
 
+  Future<List<StockSymbolModel>> fetchAllVietnamSymbols() async {
+    _validateApiKey();
+    final Uri uri = Uri.parse('$_baseUrl/stock/symbol?exchange=VN&token=$_apiKey');
+    final http.Response response = await _client.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Không thể tải danh sách mã cổ phiếu: ${response.statusCode}');
+    }
+    final dynamic data = jsonDecode(response.body);
+    if (data is! List) {
+      return <StockSymbolModel>[];
+    }
+    final List<StockSymbolModel> symbols = data
+        .map((dynamic item) => StockSymbolModel.fromJson(item as Map<String, dynamic>))
+        .where((StockSymbolModel symbol) => symbol.displaySymbol.isNotEmpty && symbol.apiSymbol.isNotEmpty)
+        .toList()
+      ..sort((StockSymbolModel a, StockSymbolModel b) => a.displaySymbol.compareTo(b.displaySymbol));
+    _vietnamSymbolMap = <String, String>{
+      for (final StockSymbolModel symbol in symbols) symbol.displaySymbol.toUpperCase(): symbol.apiSymbol,
+      for (final StockSymbolModel symbol in symbols) symbol.apiSymbol.toUpperCase(): symbol.apiSymbol,
+    };
+    return symbols;
+  }
+
   Future<List<MarketIndex>> fetchMarketIndices() async {
     _validateApiKey();
     final List<Map<String, String>> indexConfigs = <Map<String, String>>[
@@ -97,14 +121,44 @@ class ApiService {
     return results;
   }
 
-  Future<List<Stock>> fetchWatchlist({List<StockSymbol>? symbols}) async {
+  Future<List<Stock>> fetchWatchlist({
+    List<StockSymbol>? symbols,
+    List<StockSymbolModel>? symbolModels,
+  }) async {
     _validateApiKey();
     await _ensureVietnamSymbolMap();
-    final List<StockSymbol> targets = symbols ?? kTrackedStockSymbols;
+
+    final List<StockSymbolModel> targets;
+    if (symbolModels != null && symbolModels.isNotEmpty) {
+      targets = symbolModels;
+    } else if (symbols != null && symbols.isNotEmpty) {
+      targets = symbols
+          .map(
+            (StockSymbol symbol) => StockSymbolModel(
+              displaySymbol: symbol.displaySymbol,
+              apiSymbol: symbol.apiSymbol,
+              companyName: symbol.companyName,
+              exchange: symbol.exchange,
+            ),
+          )
+          .toList(growable: false);
+    } else {
+      targets = kTrackedStockSymbols
+          .map(
+            (StockSymbol symbol) => StockSymbolModel(
+              displaySymbol: symbol.displaySymbol,
+              apiSymbol: symbol.apiSymbol,
+              companyName: symbol.companyName,
+              exchange: symbol.exchange,
+            ),
+          )
+          .toList(growable: false);
+    }
+
     final List<Stock> stocks = <Stock>[];
     const int chunkSize = 10;
     for (int i = 0; i < targets.length; i += chunkSize) {
-      final Iterable<StockSymbol> chunk = targets.skip(i).take(chunkSize);
+      final Iterable<StockSymbolModel> chunk = targets.skip(i).take(chunkSize);
       final List<Future<Stock?>> futures = chunk.map(_fetchSingleQuote).toList();
       final List<Stock?> results = await Future.wait(futures);
       stocks.addAll(results.whereType<Stock>());
@@ -112,7 +166,7 @@ class ApiService {
     return stocks;
   }
 
-  Future<Stock?> _fetchSingleQuote(StockSymbol symbol) async {
+  Future<Stock?> _fetchSingleQuote(StockSymbolModel symbol) async {
     final String key = symbol.displaySymbol.toUpperCase();
     final String resolvedSymbol = _vietnamSymbolMap?[key] ?? symbol.apiSymbol;
     final List<String> candidates = <String>{
@@ -131,7 +185,7 @@ class ApiService {
     return null;
   }
 
-  Future<Stock?> _fetchQuoteInternal(String apiSymbol, StockSymbol original) async {
+  Future<Stock?> _fetchQuoteInternal(String apiSymbol, StockSymbolModel original) async {
     final Uri uri = Uri.parse('$_baseUrl/quote?symbol=$apiSymbol&token=$_apiKey');
     try {
       final http.Response response = await _client.get(uri);
@@ -158,10 +212,11 @@ class ApiService {
       }
       return Stock(
         symbol: original.displaySymbol,
-        name: original.companyName,
+        name: (original.companyName.isEmpty ? original.displaySymbol : original.companyName),
         price: current.toDouble(),
         changePercent: changePercent,
         volume: 0,
+        apiSymbol: apiSymbol,
       );
     } catch (_) {
       return null;
@@ -198,42 +253,82 @@ class ApiService {
     }).toList();
   }
 
-  Future<List<StockPricePoint>> fetchIntradayPrices(String displaySymbol) async {
+  Future<List<StockPricePoint>> fetchIntradayPrices(
+    String displaySymbol, {
+    String? apiSymbol,
+  }) async {
     _validateApiKey();
-    final StockSymbol? target = kStockSymbolLookup[displaySymbol];
-    if (target == null) {
-      throw ArgumentError('Không tìm thấy symbol $displaySymbol trong danh sách theo dõi.');
-    }
+    await _ensureVietnamSymbolMap();
     final DateTime now = DateTime.now();
     final DateTime from = now.subtract(const Duration(hours: 8));
-    final Uri uri = Uri.parse(
-      '$_baseUrl/stock/candle?symbol=${target.apiSymbol}&resolution=30&from=${from.millisecondsSinceEpoch ~/ 1000}&to=${now.millisecondsSinceEpoch ~/ 1000}&token=$_apiKey',
-    );
-    final http.Response response = await _client.get(uri);
-    if (response.statusCode != 200) {
-      throw Exception('Không thể tải dữ liệu intraday cho ${target.displaySymbol}');
+    final List<String> candidates = _buildSymbolCandidates(displaySymbol, apiSymbol: apiSymbol);
+    for (final String candidate in candidates) {
+      final Uri uri = Uri.parse(
+        '$_baseUrl/stock/candle?symbol=$candidate&resolution=30&from=${from.millisecondsSinceEpoch ~/ 1000}&to=${now.millisecondsSinceEpoch ~/ 1000}&token=$_apiKey',
+      );
+      try {
+        final http.Response response = await _client.get(uri);
+        if (response.statusCode != 200) {
+          continue;
+        }
+        final dynamic data = jsonDecode(response.body);
+        final List<StockPricePoint> points = _parseCandles(data, useDateLabel: false);
+        if (points.isNotEmpty) {
+          return points;
+        }
+      } catch (_) {
+        // ignore and try next candidate
+      }
     }
-    final dynamic data = jsonDecode(response.body);
-    return _parseCandles(data, useDateLabel: false);
+    return <StockPricePoint>[];
   }
 
-  Future<List<StockPricePoint>> fetchHistoricalPrices(String displaySymbol) async {
+  Future<List<StockPricePoint>> fetchHistoricalPrices(
+    String displaySymbol, {
+    String? apiSymbol,
+  }) async {
     _validateApiKey();
-    final StockSymbol? target = kStockSymbolLookup[displaySymbol];
-    if (target == null) {
-      throw ArgumentError('Không tìm thấy symbol $displaySymbol trong danh sách theo dõi.');
-    }
+    await _ensureVietnamSymbolMap();
     final DateTime now = DateTime.now();
     final DateTime from = now.subtract(const Duration(days: 30));
-    final Uri uri = Uri.parse(
-      '$_baseUrl/stock/candle?symbol=${target.apiSymbol}&resolution=D&from=${from.millisecondsSinceEpoch ~/ 1000}&to=${now.millisecondsSinceEpoch ~/ 1000}&token=$_apiKey',
-    );
-    final http.Response response = await _client.get(uri);
-    if (response.statusCode != 200) {
-      throw Exception('Không thể tải dữ liệu lịch sử cho ${target.displaySymbol}');
+    final List<String> candidates = _buildSymbolCandidates(displaySymbol, apiSymbol: apiSymbol);
+    for (final String candidate in candidates) {
+      final Uri uri = Uri.parse(
+        '$_baseUrl/stock/candle?symbol=$candidate&resolution=D&from=${from.millisecondsSinceEpoch ~/ 1000}&to=${now.millisecondsSinceEpoch ~/ 1000}&token=$_apiKey',
+      );
+      try {
+        final http.Response response = await _client.get(uri);
+        if (response.statusCode != 200) {
+          continue;
+        }
+        final dynamic data = jsonDecode(response.body);
+        final List<StockPricePoint> points = _parseCandles(data, useDateLabel: true);
+        if (points.isNotEmpty) {
+          return points;
+        }
+      } catch (_) {
+        // ignore and try next candidate
+      }
     }
-    final dynamic data = jsonDecode(response.body);
-    return _parseCandles(data, useDateLabel: true);
+    return <StockPricePoint>[];
+  }
+
+  List<String> _buildSymbolCandidates(String displaySymbol, {String? apiSymbol}) {
+    final String upper = displaySymbol.toUpperCase();
+    final String baseSymbol = (apiSymbol != null && apiSymbol.isNotEmpty) ? apiSymbol : upper;
+    final String resolved = _vietnamSymbolMap?[upper] ?? baseSymbol;
+    final Set<String> candidates = <String>{};
+    if (resolved.isNotEmpty) {
+      candidates.add(resolved);
+      if (!resolved.contains('.')) {
+        candidates.add('${resolved}.VN');
+      }
+      if (!resolved.contains(':')) {
+        candidates.add('HOSE:$resolved');
+        candidates.add('VND:$resolved');
+      }
+    }
+    return candidates.where((String symbol) => symbol.isNotEmpty).toList();
   }
 
   List<StockPricePoint> _parseCandles(dynamic data, {required bool useDateLabel}) {

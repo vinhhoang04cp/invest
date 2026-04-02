@@ -7,12 +7,14 @@ import '../services/api_service.dart';
 class MiniSparkline extends StatefulWidget {
   const MiniSparkline({
     required this.symbol,
+    this.apiSymbol,
     this.height = 48,
     this.lineColor,
     super.key,
   });
 
   final String symbol;
+  final String? apiSymbol;
   final double height;
   final Color? lineColor;
 
@@ -23,7 +25,8 @@ class MiniSparkline extends StatefulWidget {
     if (symbol == null) {
       _cache.clear();
     } else {
-      _cache.remove(symbol);
+      final String upper = symbol.toUpperCase();
+      _cache.removeWhere((String key, Future<List<StockPricePoint>> value) => key.startsWith('$upper|'));
     }
   }
 
@@ -32,15 +35,16 @@ class MiniSparkline extends StatefulWidget {
 }
 
 class _MiniSparklineState extends State<MiniSparkline> {
-
+  late final String _cacheKey;
   late Future<List<StockPricePoint>> _future;
   final ApiService _apiService = ApiService.instance;
 
   @override
   void initState() {
     super.initState();
-    _future = MiniSparkline._cache[widget.symbol] ??=
-        _apiService.fetchIntradayPrices(widget.symbol);
+    _cacheKey = '${widget.symbol.toUpperCase()}|${widget.apiSymbol ?? ''}';
+    _future = MiniSparkline._cache[_cacheKey] ??=
+        _apiService.fetchIntradayPrices(widget.symbol, apiSymbol: widget.apiSymbol);
   }
 
   @override
@@ -48,7 +52,7 @@ class _MiniSparklineState extends State<MiniSparkline> {
     return SizedBox(
       height: widget.height,
       child: FutureBuilder<List<StockPricePoint>>(
-        future: MiniSparkline._cache[widget.symbol] ?? _future,
+        future: MiniSparkline._cache[_cacheKey] ?? _future,
         builder: (BuildContext context, AsyncSnapshot<List<StockPricePoint>> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const _SparklineSkeleton();

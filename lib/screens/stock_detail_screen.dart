@@ -40,8 +40,14 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 
   Future<_StockDetailData> _loadStockDetail() async {
-    final List<StockPricePoint> intraday = await _apiService.fetchIntradayPrices(_stock.symbol);
-    final List<StockPricePoint> historical = await _apiService.fetchHistoricalPrices(_stock.symbol);
+    final List<StockPricePoint> intraday = await _apiService.fetchIntradayPrices(
+      _stock.symbol,
+      apiSymbol: _stock.apiSymbol,
+    );
+    final List<StockPricePoint> historical = await _apiService.fetchHistoricalPrices(
+      _stock.symbol,
+      apiSymbol: _stock.apiSymbol,
+    );
     final List<MarketNews> relatedNews = (await _apiService.fetchMarketNews())
         .where((MarketNews news) =>
             news.title.toUpperCase().contains(_stock.symbol.toUpperCase()) ||

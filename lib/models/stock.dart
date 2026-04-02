@@ -7,6 +7,7 @@ class Stock {
     required this.price,
     required this.changePercent,
     required this.volume,
+    this.apiSymbol,
   });
 
   final String symbol;
@@ -14,6 +15,7 @@ class Stock {
   final double price;
   final double changePercent;
   final int volume;
+  final String? apiSymbol;
 
   double get changeValue => price * changePercent / 100;
 
@@ -23,6 +25,7 @@ class Stock {
     double? price,
     double? changePercent,
     int? volume,
+    String? apiSymbol,
   }) {
     return Stock(
       symbol: symbol ?? this.symbol,
@@ -30,6 +33,7 @@ class Stock {
       price: price ?? this.price,
       changePercent: changePercent ?? this.changePercent,
       volume: volume ?? this.volume,
+      apiSymbol: apiSymbol ?? this.apiSymbol,
     );
   }
 
@@ -40,6 +44,7 @@ class Stock {
       price: (json['price'] as num).toDouble(),
       changePercent: (json['changePercent'] as num).toDouble(),
       volume: (json['volume'] as num).toInt(),
+      apiSymbol: json['apiSymbol'] as String? ?? json['symbol'] as String?,
     );
   }
 
@@ -50,6 +55,7 @@ class Stock {
       'price': price,
       'changePercent': changePercent,
       'volume': volume,
+      'apiSymbol': apiSymbol,
     };
   }
 
@@ -64,7 +70,7 @@ class Stock {
 
   @override
   String toString() {
-    return 'Stock(symbol: $symbol, name: $name, price: $price, changePercent: $changePercent, volume: $volume)';
+    return 'Stock(symbol: $symbol, name: $name, price: $price, changePercent: $changePercent, volume: $volume, apiSymbol: $apiSymbol)';
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/stock_symbols.dart';
+import '../models/stock_symbol_model.dart';
 import '../state/watchlist_provider.dart';
 
 class WatchlistManageScreen extends StatefulWidget {
@@ -20,23 +21,32 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
       appBar: AppBar(
         title: const Text('Quản lý watchlist'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Làm mới danh sách mã',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => context.read<WatchlistProvider>().refreshSymbolCatalog(),
+          ),
           TextButton(
             onPressed: () => _showResetDialog(context),
             child: const Text('Đặt lại'),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddSymbolSheet(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Thêm mã'),
+      floatingActionButton: Consumer<WatchlistProvider>(
+        builder: (BuildContext context, WatchlistProvider provider, _) {
+          return FloatingActionButton.extended(
+            onPressed: provider.isLoading ? null : () => _showAddSymbolSheet(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Thêm mã'),
+          );
+        },
       ),
       body: Consumer<WatchlistProvider>(
         builder: (BuildContext context, WatchlistProvider provider, _) {
           if (provider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          final List<StockSymbol> symbols = provider.trackedSymbols;
+          final List<StockSymbolModel> symbols = provider.trackedSymbols;
           if (symbols.isEmpty) {
             return const Center(child: Text('Danh sách watchlist đang trống.')); 
           }
@@ -47,7 +57,7 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
               provider.reorder(oldIndex, newIndex);
             },
             itemBuilder: (BuildContext context, int index) {
-              final StockSymbol symbol = symbols[index];
+              final StockSymbolModel symbol = symbols[index];
               return Card(
                 key: ValueKey<String>(symbol.displaySymbol),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -73,6 +83,9 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
 
   Future<void> _showAddSymbolSheet(BuildContext context) async {
     final WatchlistProvider provider = context.read<WatchlistProvider>();
+    if (provider.isLoading) {
+      return;
+    }
     final TextEditingController controller = TextEditingController();
     await showModalBottomSheet<void>(
       context: context,
@@ -87,18 +100,31 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
           ),
           child: StatefulBuilder(
             builder: (BuildContext context, StateSetter setModalState) {
-              List<StockSymbol> candidates = kTrackedStockSymbols
-                  .where((StockSymbol symbol) => !provider.containsSymbol(symbol.displaySymbol))
+              if (provider.availableSymbols.isEmpty) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const <Widget>[
+                    SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
+                  ],
+                );
+              }
+              List<StockSymbolModel> candidates = provider.availableSymbols
+                  .where((StockSymbolModel symbol) => !provider.containsSymbol(symbol.displaySymbol))
                   .toList();
               final String query = controller.text.trim().toLowerCase();
               if (query.isNotEmpty) {
                 candidates = candidates
                     .where(
-                      (StockSymbol symbol) =>
+                      (StockSymbolModel symbol) =>
                           symbol.displaySymbol.toLowerCase().contains(query) ||
                           symbol.companyName.toLowerCase().contains(query),
                     )
                     .toList();
+              } else {
+                candidates.sort((StockSymbolModel a, StockSymbolModel b) => a.displaySymbol.compareTo(b.displaySymbol));
+                if (candidates.length > 120) {
+                  candidates = candidates.take(120).toList();
+                }
               }
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -129,10 +155,14 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
                             itemCount: candidates.length,
                             separatorBuilder: (_, __) => const Divider(height: 1),
                             itemBuilder: (BuildContext context, int index) {
-                              final StockSymbol symbol = candidates[index];
+                              final StockSymbolModel symbol = candidates[index];
                               return ListTile(
                                 title: Text(symbol.displaySymbol),
-                                subtitle: Text(symbol.companyName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(
+                                  '${symbol.companyName} • ${symbol.exchange}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 onTap: () {
                                   provider.addSymbol(symbol.displaySymbol);
                                   Navigator.of(context).pop();
