@@ -6,7 +6,7 @@ import '../models/market_index.dart';
 import '../models/market_news.dart';
 import '../models/stock.dart';
 import '../models/stock_symbol_model.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 import '../state/watchlist_provider.dart';
 import '../widgets/mini_sparkline.dart';
 import '../widgets/section_header.dart';
@@ -22,7 +22,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
   late Future<_HomeScreenData> _homeDataFuture;
   late WatchlistProvider _watchlistProvider;
   bool _didSetupProvider = false;
@@ -82,11 +82,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<_HomeScreenData> _loadData(List<StockSymbolModel> trackedSymbols) async {
-    final List<MarketIndex> indices = await _apiService.fetchMarketIndices();
-    final List<Stock> watchlist = trackedSymbols.isEmpty
-        ? <Stock>[]
-        : await _apiService.fetchWatchlist(symbolModels: trackedSymbols);
-    final List<MarketNews> news = await _apiService.fetchMarketNews();
+    // Fetch each section independently so one failure doesn't block the rest
+    List<MarketIndex> indices = <MarketIndex>[];
+    List<Stock> watchlist = <Stock>[];
+    List<MarketNews> news = <MarketNews>[];
+
+    try {
+      indices = await _apiService.fetchMarketIndices();
+    } catch (e) {
+      debugPrint('Failed to load indices: $e');
+    }
+
+    try {
+      if (trackedSymbols.isNotEmpty) {
+        watchlist = await _apiService.fetchWatchlist(symbolModels: trackedSymbols);
+      }
+    } catch (e) {
+      debugPrint('Failed to load watchlist: $e');
+    }
+
+    try {
+      news = await _apiService.fetchMarketNews();
+    } catch (e) {
+      debugPrint('Failed to load news: $e');
+    }
+
     return _HomeScreenData(
       indices: indices,
       watchlist: watchlist,
@@ -189,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: indices.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 16),
+            separatorBuilder: (_, __) => const SizedBox(width: 16),
             itemBuilder: (BuildContext context, int index) {
               final MarketIndex marketIndex = indices[index];
               final bool positive = marketIndex.isPositive;

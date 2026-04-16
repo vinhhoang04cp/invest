@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/stock.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 import 'stock_detail_screen.dart';
 
 class StockListScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class StockListScreen extends StatefulWidget {
 }
 
 class _StockListScreenState extends State<StockListScreen> {
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
   final TextEditingController _searchController = TextEditingController();
   late Future<void> _loadFuture;
   List<Stock> _stocks = <Stock>[];
@@ -117,7 +117,7 @@ class _StockListScreenState extends State<StockListScreen> {
                         ),
                       );
                     },
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => const Divider(height: 1),
                     itemCount: stocks.length,
                   ),
                 ),

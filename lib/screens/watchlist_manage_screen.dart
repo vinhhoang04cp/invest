@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/stock_symbols.dart';
 import '../models/stock_symbol_model.dart';
 import '../state/watchlist_provider.dart';
 

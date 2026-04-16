@@ -8,6 +8,11 @@ class Stock {
     required this.changePercent,
     required this.volume,
     this.apiSymbol,
+    this.dayHigh,
+    this.dayLow,
+    this.open,
+    this.previousClose,
+    this.marketCap,
   });
 
   final String symbol;
@@ -16,6 +21,11 @@ class Stock {
   final double changePercent;
   final int volume;
   final String? apiSymbol;
+  final double? dayHigh;
+  final double? dayLow;
+  final double? open;
+  final double? previousClose;
+  final double? marketCap;
 
   double get changeValue => price * changePercent / 100;
 
@@ -26,6 +36,11 @@ class Stock {
     double? changePercent,
     int? volume,
     String? apiSymbol,
+    double? dayHigh,
+    double? dayLow,
+    double? open,
+    double? previousClose,
+    double? marketCap,
   }) {
     return Stock(
       symbol: symbol ?? this.symbol,
@@ -34,6 +49,11 @@ class Stock {
       changePercent: changePercent ?? this.changePercent,
       volume: volume ?? this.volume,
       apiSymbol: apiSymbol ?? this.apiSymbol,
+      dayHigh: dayHigh ?? this.dayHigh,
+      dayLow: dayLow ?? this.dayLow,
+      open: open ?? this.open,
+      previousClose: previousClose ?? this.previousClose,
+      marketCap: marketCap ?? this.marketCap,
     );
   }
 
@@ -45,6 +65,11 @@ class Stock {
       changePercent: (json['changePercent'] as num).toDouble(),
       volume: (json['volume'] as num).toInt(),
       apiSymbol: json['apiSymbol'] as String? ?? json['symbol'] as String?,
+      dayHigh: (json['dayHigh'] as num?)?.toDouble(),
+      dayLow: (json['dayLow'] as num?)?.toDouble(),
+      open: (json['open'] as num?)?.toDouble(),
+      previousClose: (json['previousClose'] as num?)?.toDouble(),
+      marketCap: (json['marketCap'] as num?)?.toDouble(),
     );
   }
 
@@ -56,6 +81,11 @@ class Stock {
       'changePercent': changePercent,
       'volume': volume,
       'apiSymbol': apiSymbol,
+      'dayHigh': dayHigh,
+      'dayLow': dayLow,
+      'open': open,
+      'previousClose': previousClose,
+      'marketCap': marketCap,
     };
   }
 
@@ -70,7 +100,8 @@ class Stock {
 
   @override
   String toString() {
-    return 'Stock(symbol: $symbol, name: $name, price: $price, changePercent: $changePercent, volume: $volume, apiSymbol: $apiSymbol)';
+    return 'Stock(symbol: $symbol, name: $name, price: $price, '
+        'changePercent: $changePercent, volume: $volume, apiSymbol: $apiSymbol)';
   }
 }
 

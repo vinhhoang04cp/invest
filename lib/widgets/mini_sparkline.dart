@@ -2,7 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models/stock.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 
 class MiniSparkline extends StatefulWidget {
   const MiniSparkline({
@@ -37,7 +37,7 @@ class MiniSparkline extends StatefulWidget {
 class _MiniSparklineState extends State<MiniSparkline> {
   late final String _cacheKey;
   late Future<List<StockPricePoint>> _future;
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
 
   @override
   void initState() {

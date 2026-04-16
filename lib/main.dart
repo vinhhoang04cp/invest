@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
@@ -15,12 +14,6 @@ import 'state/watchlist_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (error) {
-    // Nếu thiếu file .env, vẫn chạy ứng dụng nhưng sẽ báo lỗi khi gọi API.
-    debugPrint('Không thể tải file .env: $error');
-  }
   runApp(
     TalkerWrapper(
       talker: talker,

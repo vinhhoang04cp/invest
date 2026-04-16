@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/portfolio.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -11,7 +11,7 @@ class PortfolioScreen extends StatefulWidget {
 }
 
 class _PortfolioScreenState extends State<PortfolioScreen> {
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
   late Future<PortfolioSummary> _portfolioFuture;
 
   @override
@@ -28,7 +28,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         actions: <Widget>[
           IconButton(
             onPressed: () {
-              // TODO(thanhvien4): Mở modal thêm mã mới vào danh mục.
+              // TODO: Mở modal thêm mã mới vào danh mục.
             },
             icon: const Icon(Icons.add),
             tooltip: 'Thêm mã',
@@ -96,8 +96,6 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Text('TODO(thanhvien4): Thêm biểu đồ phân bổ danh mục.'),
           ],
         ),
       ),
@@ -125,7 +123,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                   ],
                 ),
                 onTap: () {
-                  // TODO(thanhvien4): Điều hướng tới chỉnh sửa hoặc chi tiết từng mục danh mục.
+                  // TODO: Điều hướng tới chỉnh sửa hoặc chi tiết từng mục danh mục.
                 },
               ),
             ),

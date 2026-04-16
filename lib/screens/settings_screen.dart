@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/user.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 import 'profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
   late Future<UserProfile> _profileFuture;
   UserProfile? _profile;
 
@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: const Icon(Icons.logout),
                 title: const Text('Đăng xuất'),
                 onTap: () {
-                  // TODO(thanhvien5): Xử lý đăng xuất.
+                  // TODO: Xử lý đăng xuất.
                 },
               ),
             ],

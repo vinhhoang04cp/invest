@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/market_news.dart';
 import '../models/stock.dart';
-import '../services/api_service.dart';
+import '../services/yahoo_finance_service.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stock_line_chart.dart';
 
@@ -23,7 +23,7 @@ class StockDetailScreen extends StatefulWidget {
 }
 
 class _StockDetailScreenState extends State<StockDetailScreen> {
-  final ApiService _apiService = ApiService.instance;
+  final YahooFinanceService _apiService = YahooFinanceService.instance;
   late Future<_StockDetailData> _detailFuture;
   late Stock _stock;
   bool _isInitialized = false;
@@ -102,12 +102,14 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
           final bool positive = _stock.changePercent >= 0;
           final List<StockPricePoint> chartPoints =
               _selectedRange == _ChartRange.oneDay ? data.intraday : data.historical;
-          final double dayHigh = data.intraday.isEmpty
-              ? _stock.price
-              : data.intraday.map((StockPricePoint p) => p.price).reduce((double a, double b) => a > b ? a : b);
-          final double dayLow = data.intraday.isEmpty
-              ? _stock.price
-              : data.intraday.map((StockPricePoint p) => p.price).reduce((double a, double b) => a < b ? a : b);
+          final double dayHigh = _stock.dayHigh ??
+              (data.intraday.isEmpty
+                  ? _stock.price
+                  : data.intraday.map((StockPricePoint p) => p.price).reduce((double a, double b) => a > b ? a : b));
+          final double dayLow = _stock.dayLow ??
+              (data.intraday.isEmpty
+                  ? _stock.price
+                  : data.intraday.map((StockPricePoint p) => p.price).reduce((double a, double b) => a < b ? a : b));
           final double rangeHigh = chartPoints.isEmpty
               ? _stock.price
               : chartPoints.map((StockPricePoint p) => p.price).reduce((double a, double b) => a > b ? a : b);
@@ -145,7 +147,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                         title: Text(news.title),
                         subtitle: Text('${news.source} • ${news.timeAgo}'),
                         onTap: () {
-                          // TODO(thanhvien3): Mở chi tiết bài viết.
+                          // TODO: Mở chi tiết bài viết.
                         },
                       ),
                     ),
@@ -214,7 +216,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
       groupValue: _selectedRange,
       children: const <_ChartRange, Widget>{
         _ChartRange.oneDay: Padding(padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16), child: Text('1D')),
-        _ChartRange.tenDays: Padding(padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16), child: Text('10D')),
+        _ChartRange.tenDays: Padding(padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16), child: Text('1M')),
       },
       onValueChanged: (_ChartRange? value) {
         if (value != null) {
@@ -234,7 +236,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
     double rangeLow,
   ) {
     final ThemeData theme = Theme.of(context);
-    final String rangeLabel = _selectedRange == _ChartRange.oneDay ? 'Biểu đồ 1D' : 'Biểu đồ 10D';
+    final String rangeLabel = _selectedRange == _ChartRange.oneDay ? 'Biểu đồ 1D' : 'Biểu đồ 1M';
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
@@ -252,6 +254,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                 _StatTile(title: 'Thấp (1D)', value: '${dayLow.toStringAsFixed(0)} đ'),
                 _StatTile(title: 'Cao ($rangeLabel)', value: '${rangeHigh.toStringAsFixed(0)} đ'),
                 _StatTile(title: 'Thấp ($rangeLabel)', value: '${rangeLow.toStringAsFixed(0)} đ'),
+                if (_stock.open != null)
+                  _StatTile(title: 'Mở cửa', value: '${_stock.open!.toStringAsFixed(0)} đ'),
+                if (_stock.previousClose != null)
+                  _StatTile(title: 'Đóng cửa hôm qua', value: '${_stock.previousClose!.toStringAsFixed(0)} đ'),
               ],
             ),
           ],

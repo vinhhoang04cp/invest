@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/stock_symbols.dart';
 import '../models/stock_symbol_model.dart';
-import '../services/stock_symbol_repository.dart';
+import '../services/yahoo_finance_service.dart';
 
 class WatchlistProvider extends ChangeNotifier {
   WatchlistProvider() {
@@ -33,7 +33,7 @@ class WatchlistProvider extends ChangeNotifier {
     }
 
     if (_symbols.isEmpty && _allSymbols.isEmpty) {
-      return _trackedSymbolsCache = StockSymbolRepository.instance.getDefaultWatchlist();
+      return _trackedSymbolsCache = _getDefaultWatchlist();
     }
 
     final List<StockSymbolModel> result = _symbols
@@ -41,7 +41,7 @@ class WatchlistProvider extends ChangeNotifier {
           (String code) => _symbolLookup[code] ??
               StockSymbolModel(
                 displaySymbol: code,
-                apiSymbol: code,
+                apiSymbol: '$code.VN',
                 companyName: code,
                 exchange: 'VN',
               ),
@@ -87,7 +87,7 @@ class WatchlistProvider extends ChangeNotifier {
   }
 
   Future<void> resetToDefault() async {
-    final List<StockSymbolModel> defaults = StockSymbolRepository.instance.getDefaultWatchlist();
+    final List<StockSymbolModel> defaults = _getDefaultWatchlist();
     _symbols
       ..clear()
       ..addAll(defaults.map((StockSymbolModel symbol) => symbol.displaySymbol));
@@ -98,12 +98,14 @@ class WatchlistProvider extends ChangeNotifier {
 
   Future<void> refreshSymbolCatalog() async {
     try {
-      final List<StockSymbolModel> fetched = await StockSymbolRepository.instance.refresh();
+      final List<StockSymbolModel> fetched =
+          await YahooFinanceService.instance.refreshSymbols();
       _allSymbols
         ..clear()
         ..addAll(fetched);
       _symbolLookup = <String, StockSymbolModel>{
-        for (final StockSymbolModel symbol in _allSymbols) symbol.displaySymbol.toUpperCase(): symbol,
+        for (final StockSymbolModel symbol in _allSymbols)
+          symbol.displaySymbol.toUpperCase(): symbol,
       };
       for (final String code in _symbols) {
         _ensureSymbolInLookup(code);
@@ -120,17 +122,43 @@ class WatchlistProvider extends ChangeNotifier {
     _trackedSymbolsCache = null;
   }
 
+  List<StockSymbolModel> _getDefaultWatchlist() {
+    return kTrackedStockSymbols
+        .take(_defaultCount)
+        .map(
+          (StockSymbol s) => StockSymbolModel(
+            displaySymbol: s.displaySymbol,
+            apiSymbol: s.apiSymbol,
+            companyName: s.companyName,
+            exchange: s.exchange,
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> _initialize() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<String>? stored = prefs.getStringList(_storageKey);
 
-      final List<StockSymbolModel> fetched = await StockSymbolRepository.instance.getAllSymbols();
-      _allSymbols
-        ..clear()
-        ..addAll(fetched);
+      // Try to fetch all symbols from Yahoo Finance
+      try {
+        final List<StockSymbolModel> fetched =
+            await YahooFinanceService.instance.fetchAllVietnamSymbols();
+        _allSymbols
+          ..clear()
+          ..addAll(fetched);
+      } catch (e) {
+        debugPrint('Failed to fetch symbols, using defaults: $e');
+        // Fall back to hardcoded list
+        _allSymbols
+          ..clear()
+          ..addAll(_getDefaultWatchlist());
+      }
+
       _symbolLookup = <String, StockSymbolModel>{
-        for (final StockSymbolModel symbol in _allSymbols) symbol.displaySymbol.toUpperCase(): symbol,
+        for (final StockSymbolModel symbol in _allSymbols)
+          symbol.displaySymbol.toUpperCase(): symbol,
       };
 
       if (stored != null && stored.isNotEmpty) {
@@ -138,7 +166,7 @@ class WatchlistProvider extends ChangeNotifier {
           ..clear()
           ..addAll(stored.map((String code) => code.toUpperCase()));
       } else {
-        final List<StockSymbolModel> defaults = StockSymbolRepository.instance.getDefaultWatchlist();
+        final List<StockSymbolModel> defaults = _getDefaultWatchlist();
         _symbols
           ..clear()
           ..addAll(defaults.map((StockSymbolModel symbol) => symbol.displaySymbol));
@@ -156,12 +184,13 @@ class WatchlistProvider extends ChangeNotifier {
           );
       }
       if (_allSymbols.isEmpty) {
-        final List<StockSymbolModel> defaults = StockSymbolRepository.instance.getDefaultWatchlist();
+        final List<StockSymbolModel> defaults = _getDefaultWatchlist();
         _allSymbols
           ..clear()
           ..addAll(defaults);
         _symbolLookup = <String, StockSymbolModel>{
-          for (final StockSymbolModel symbol in _allSymbols) symbol.displaySymbol.toUpperCase(): symbol,
+          for (final StockSymbolModel symbol in _allSymbols)
+            symbol.displaySymbol.toUpperCase(): symbol,
         };
       }
       for (final String code in _symbols) {
@@ -185,7 +214,7 @@ class WatchlistProvider extends ChangeNotifier {
     }
     _symbolLookup[code] = StockSymbolModel(
       displaySymbol: code,
-      apiSymbol: code,
+      apiSymbol: '$code.VN',
       companyName: code,
       exchange: 'VN',
     );
