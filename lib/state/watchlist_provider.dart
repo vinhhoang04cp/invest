@@ -20,14 +20,23 @@ class WatchlistProvider extends ChangeNotifier {
   Map<String, StockSymbolModel> _symbolLookup = <String, StockSymbolModel>{};
   bool _isLoading = true;
 
+  /// Cache for trackedSymbols to avoid creating List multiple times
+  List<StockSymbolModel>? _trackedSymbolsCache;
+
   bool get isLoading => _isLoading;
   List<StockSymbolModel> get availableSymbols => _allSymbols;
 
   List<StockSymbolModel> get trackedSymbols {
-    if (_symbols.isEmpty && _allSymbols.isEmpty) {
-      return StockSymbolRepository.instance.getDefaultWatchlist();
+    // Return cached result if available
+    if (_trackedSymbolsCache != null) {
+      return _trackedSymbolsCache!;
     }
-    return _symbols
+
+    if (_symbols.isEmpty && _allSymbols.isEmpty) {
+      return _trackedSymbolsCache = StockSymbolRepository.instance.getDefaultWatchlist();
+    }
+
+    final List<StockSymbolModel> result = _symbols
         .map(
           (String code) => _symbolLookup[code] ??
               StockSymbolModel(
@@ -38,6 +47,8 @@ class WatchlistProvider extends ChangeNotifier {
               ),
         )
         .toList(growable: false);
+
+    return _trackedSymbolsCache = result;
   }
 
   bool containsSymbol(String displaySymbol) {
@@ -52,12 +63,14 @@ class WatchlistProvider extends ChangeNotifier {
     _ensureSymbolInLookup(code);
     _symbols.add(code);
     await _save();
+    _invalidateCache();
     notifyListeners();
   }
 
   Future<void> removeSymbol(String displaySymbol) async {
     if (_symbols.remove(displaySymbol.toUpperCase())) {
       await _save();
+      _invalidateCache();
       notifyListeners();
     }
   }
@@ -69,6 +82,7 @@ class WatchlistProvider extends ChangeNotifier {
     final String item = _symbols.removeAt(oldIndex);
     _symbols.insert(newIndex, item);
     await _save();
+    _invalidateCache();
     notifyListeners();
   }
 
@@ -78,6 +92,7 @@ class WatchlistProvider extends ChangeNotifier {
       ..clear()
       ..addAll(defaults.map((StockSymbolModel symbol) => symbol.displaySymbol));
     await _save();
+    _invalidateCache();
     notifyListeners();
   }
 
@@ -93,10 +108,16 @@ class WatchlistProvider extends ChangeNotifier {
       for (final String code in _symbols) {
         _ensureSymbolInLookup(code);
       }
+      _invalidateCache();
       notifyListeners();
     } catch (error) {
       debugPrint('WatchlistProvider refreshSymbolCatalog error: $error');
     }
+  }
+
+  /// Invalidate cached trackedSymbols
+  void _invalidateCache() {
+    _trackedSymbolsCache = null;
   }
 
   Future<void> _initialize() async {

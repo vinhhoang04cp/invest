@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/market_index.dart';
 import '../models/market_news.dart';
@@ -31,10 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _homeDataFuture = Future<_HomeScreenData>.value(
       const _HomeScreenData(
-        indices: const <MarketIndex>[],
-        watchlist: const <Stock>[],
-        news: const <MarketNews>[],
-        trackedSymbols: const <StockSymbolModel>[],
+        indices: <MarketIndex>[],
+        watchlist: <Stock>[],
+        news: <MarketNews>[],
+        trackedSymbols: <StockSymbolModel>[],
       ),
     );
   }
@@ -188,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: indices.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (BuildContext context, int index) {
               final MarketIndex marketIndex = indices[index];
               final bool positive = marketIndex.isPositive;
@@ -325,9 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: Text(item.title),
             subtitle: Text('${item.source} • ${item.timeAgo}'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              // TODO(thanhvien1): Điều hướng tới trang chi tiết tin tức, mở WebView.
-            },
+            onTap: () => _openNewsUrl(item.url),
           ),
         ),
       );
@@ -341,6 +340,36 @@ class _HomeScreenState extends State<HomeScreen> {
         delegate: SliverChildListDelegate(tiles),
       ),
     );
+  }
+
+  Future<void> _openNewsUrl(String? url) async {
+    if (url == null || url.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không có link tin tức')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final Uri uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không thể mở link')),
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $error')),
+        );
+      }
+    }
   }
 }
 
@@ -362,7 +391,7 @@ class _WatchlistCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: theme.colorScheme.surfaceVariant.withOpacity(.4),
+          color: theme.colorScheme.surfaceContainerHighest.withOpacity(.4),
           border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(.3)),
         ),
         child: Row(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/portfolio_screen.dart';
@@ -9,6 +10,7 @@ import 'screens/settings_screen.dart';
 import 'screens/stock_detail_screen.dart';
 import 'screens/stock_list_screen.dart';
 import 'screens/watchlist_manage_screen.dart';
+import 'services/logger_service.dart';
 import 'state/watchlist_provider.dart';
 
 Future<void> main() async {
@@ -19,7 +21,12 @@ Future<void> main() async {
     // Nếu thiếu file .env, vẫn chạy ứng dụng nhưng sẽ báo lỗi khi gọi API.
     debugPrint('Không thể tải file .env: $error');
   }
-  runApp(const AppBootstrap());
+  runApp(
+    TalkerWrapper(
+      talker: talker,
+      child: const AppBootstrap(),
+    ),
+  );
 }
 
 class AppBootstrap extends StatelessWidget {

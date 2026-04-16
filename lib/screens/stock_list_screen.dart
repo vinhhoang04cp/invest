@@ -117,7 +117,7 @@ class _StockListScreenState extends State<StockListScreen> {
                         ),
                       );
                     },
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemCount: stocks.length,
                   ),
                 ),

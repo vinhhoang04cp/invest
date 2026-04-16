@@ -153,7 +153,7 @@ class _WatchlistManageScreenState extends State<WatchlistManageScreen> {
                         ? const Center(child: Text('Không tìm thấy mã phù hợp'))
                         : ListView.separated(
                             itemCount: candidates.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, _) => const Divider(height: 1),
                             itemBuilder: (BuildContext context, int index) {
                               final StockSymbolModel symbol = candidates[index];
                               return ListTile(

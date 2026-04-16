@@ -129,7 +129,7 @@ class _SparklineSkeleton extends StatelessWidget {
           height: constraints.maxHeight,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.3),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(.3),
           ),
         );
       },

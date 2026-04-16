@@ -209,7 +209,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
 
   Widget _buildSegmentControl(BuildContext context) {
     return CupertinoSlidingSegmentedControl<_ChartRange>(
-      backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.4),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(.4),
       thumbColor: Theme.of(context).colorScheme.primary,
       groupValue: _selectedRange,
       children: const <_ChartRange, Widget>{
