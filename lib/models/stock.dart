@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+/// Lớp đại diện cho một mã Cổ phiếu kết hợp cùng với giá và các chỉ số thị trường theo thời gian thực.
+/// Được sử dụng rộng rãi khắp ứng dụng (đặc biệt trong Watchlist và màn hình Chi tiết).
 class Stock {
   const Stock({
     required this.symbol,
@@ -15,18 +17,19 @@ class Stock {
     this.marketCap,
   });
 
-  final String symbol;
-  final String name;
-  final double price;
-  final double changePercent;
-  final int volume;
-  final String? apiSymbol;
-  final double? dayHigh;
-  final double? dayLow;
-  final double? open;
-  final double? previousClose;
-  final double? marketCap;
+  final String symbol;         // Mã định danh hiển thị UI (FPT)
+  final String name;           // Tên tổ chức/công ty
+  final double price;          // Mức giá khớp lệnh hiện tại
+  final double changePercent;  // Tỷ lệ thay đổi giá so với giá tham chiếu
+  final int volume;            // Tổng khối lượng giao dịch trong ngày
+  final String? apiSymbol;     // Tham chiếu hệ thống API (FPT.VN)
+  final double? dayHigh;       // Mức giá trần/cao nhất trong ngày
+  final double? dayLow;        // Mức giá sàn/thấp nhất trong ngày
+  final double? open;          // Mức giá thời điểm mở cửa
+  final double? previousClose; // Mức giá lúc đóng cửa của phiên hôm trước (Tham chiếu)
+  final double? marketCap;     // Vốn hóa thị trường ước tính
 
+  /// Tiền chênh lệch bằng con số tuyệt đối
   double get changeValue => price * changePercent / 100;
 
   Stock copyWith({
@@ -105,11 +108,12 @@ class Stock {
   }
 }
 
+/// Đại diện cho một điểm (Point) độc lập trên biểu đồ đường giá (Line chart hoặc Sparkline)
 @immutable
 class StockPricePoint {
   const StockPricePoint({
-    required this.timeLabel,
-    required this.price,
+    required this.timeLabel, // Mốc thời gian tương ứng (Trục X)
+    required this.price,     // Giá trị tại mốc thời gian đó (Trục Y)
   });
 
   final String timeLabel;

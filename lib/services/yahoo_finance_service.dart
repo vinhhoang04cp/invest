@@ -215,6 +215,9 @@ class _YahooAuthManager {
 // Yahoo Finance Service
 // ---------------------------------------------------------------------------
 
+/// Lớp Core Service quan trọng nhất trong ứng dụng: Xử lý giao tiếp với máy chủ Yahoo Finance.
+/// Lớp này sử dụng thiết kế Singleton, và thực thi các logic kết nối HTTP, bọc Request với cookie & crumb,
+/// sau đó giải mã (parse) dữ liệu JSON phức tạp thành các Models đơn giản (`Stock`, `MarketIndex`).
 class YahooFinanceService {
   YahooFinanceService._internal({http.Client? client})
       : _client = client ?? http.Client() {
@@ -232,8 +235,8 @@ class YahooFinanceService {
 
   // ---- Helper methods ----
 
-  /// Converts a Vietnamese stock symbol to Yahoo Finance format.
-  /// VCB → VCB.VN, ^VNINDEX stays as-is.
+  /// Tiện ích tự động định dạng mã chứng khoán Việt Nam để tương thích với Yahoo.
+  /// Ví dụ truyền vào "FPT" -> Trả ra "FPT.VN". Với chỉ số dạng "^VNINDEX" thì giữ nguyên.
   String toYahooSymbol(String symbol) {
     final String upper = symbol.toUpperCase().trim();
     if (upper.startsWith('^')) return upper;
@@ -241,8 +244,9 @@ class YahooFinanceService {
     return '$upper.VN';
   }
 
-  /// Makes an authenticated GET request to Yahoo Finance.
-  /// Retries once with fresh auth if 401/403.
+  /// Hàm tiện ích (Wrapper) để gửi GET HTTP request.
+  /// Nó tự động gọi `_auth.ensureAuth()` để cấp phát cookie/crumb và dán vào Header.
+  /// Trường hợp Cookie vừa chết (báo lỗi 401, 403), nó tự xin cấp Cookie mới ngay lập tức.
   Future<http.Response> _authGet(Uri uri) async {
     await _auth.ensureAuth();
 

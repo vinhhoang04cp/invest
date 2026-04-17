@@ -13,6 +13,9 @@ class StockDetailArgs {
   final Stock stock;
 }
 
+/// Màn hình Chi tiết một mã Cổ phiếu.
+/// Nhận dữ liệu truyền vào qua `StockDetailArgs`. Thực hiện gọi API lấy biểu đồ quá khứ
+/// và hiển thị tin tức liên quan chuyên sâu của mã cổ phiếu đang xem.
 class StockDetailScreen extends StatefulWidget {
   const StockDetailScreen({super.key});
 

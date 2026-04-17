@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/user.dart';
 
+/// Màn hình Hồ sơ cá nhân.
+/// Nơi cho phép người dùng chỉnh sửa thông tin liên hệ (Tên, Email, Số điện thoại)
+/// và trạng thái nhận thông báo.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 

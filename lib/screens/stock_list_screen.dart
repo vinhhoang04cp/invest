@@ -4,6 +4,8 @@ import '../models/stock.dart';
 import '../services/yahoo_finance_service.dart';
 import 'stock_detail_screen.dart';
 
+/// Màn hình Thị trường (Danh sách tất cả mã cổ phiếu).
+/// Cung cấp thanh tìm kiếm (Search bar) để tra cứu mã hoặc tên công ty theo thời gian thực.
 class StockListScreen extends StatefulWidget {
   const StockListScreen({super.key});
 

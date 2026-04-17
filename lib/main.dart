@@ -12,6 +12,9 @@ import 'screens/watchlist_manage_screen.dart';
 import 'services/logger_service.dart';
 import 'state/watchlist_provider.dart';
 
+/// Điểm khởi đầu chính (Entry point) của toàn bộ ứng dụng Flutter.
+/// Hàm main() được khai báo `async` vì có thể cần đợi các cấu hình hoặc plugins
+/// (như SharedPreferences hoặc Talker) khởi tạo xong trước khi chạy UI.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
@@ -22,6 +25,8 @@ Future<void> main() async {
   );
 }
 
+/// Lớp khởi động ứng dụng (AppBootstrap).
+/// Đây là nơi thiết lập các lớp phụ thuộc cấu hình toàn cục quan trọng như State Management (Provider).
 class AppBootstrap extends StatelessWidget {
   const AppBootstrap({super.key});
 
@@ -34,6 +39,9 @@ class AppBootstrap extends StatelessWidget {
   }
 }
 
+/// Định nghĩa ứng dụng gốc (StockTrackerApp).
+/// Gói toàn bộ App trong `MaterialApp` để cung cấp chủ đề (Theme), 
+/// điều hướng chung (Routing) và trang chủ (Home).
 class StockTrackerApp extends StatelessWidget {
   const StockTrackerApp({super.key});
 
@@ -56,6 +64,9 @@ class StockTrackerApp extends StatelessWidget {
   }
 }
 
+/// Bộ khung điều hướng chính (MainNavigationShell).
+/// Thanh điều hướng dưới cùng (Bottom Navigation Bar) được xử lý ở đây.
+/// Nó sẽ giữ trạng thái của 4 màn hình (Trang chủ, Thị trường, Danh mục, Cài đặt).
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
 

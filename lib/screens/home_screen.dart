@@ -14,6 +14,9 @@ import 'stock_detail_screen.dart';
 import 'stock_list_screen.dart';
 import 'watchlist_manage_screen.dart';
 
+/// Màn hình Trang Chủ (Dashboard) - Màn hình đầu tiên xuất hiện khi chạy ứng dụng.
+/// Chịu trách nhiệm hiển thị Tổng quan thị trường (Chỉ số), Danh sách theo dõi (Watchlist) 
+/// và các Tin tức tài chính mới nhất. Lấy liên kết trực tiếp với Service và WatchlistProvider.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 

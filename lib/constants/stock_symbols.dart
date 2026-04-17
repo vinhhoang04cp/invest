@@ -1,3 +1,5 @@
+/// Model đại diện cho một mã thông tin chứng khoán cơ bản.
+/// Các thông tin này thường cố định và ít thay đổi (tên tĩnh, mã trên sàn).
 class StockSymbol {
   const StockSymbol({
     required this.displaySymbol,
@@ -12,8 +14,8 @@ class StockSymbol {
   final String exchange;
 }
 
-/// Default tracked Vietnamese stock symbols.
-/// apiSymbol uses Yahoo Finance format: SYMBOL.VN
+/// Danh sách mặc định các mã chứng khoán Việt Nam để hiển thị ưu tiên khi người dùng chưa cấu hình.
+/// `apiSymbol` của các mã này sử dụng định dạng bắt buộc của Yahoo Finance (VD: FPT.VN) để gọi API.
 const List<StockSymbol> kTrackedStockSymbols = <StockSymbol>[
   StockSymbol(displaySymbol: 'VCB', apiSymbol: 'VCB.VN', companyName: 'Ngân hàng TMCP Ngoại Thương Việt Nam', exchange: 'HOSE'),
   StockSymbol(displaySymbol: 'BID', apiSymbol: 'BID.VN', companyName: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam', exchange: 'HOSE'),
@@ -47,6 +49,8 @@ const List<StockSymbol> kTrackedStockSymbols = <StockSymbol>[
   StockSymbol(displaySymbol: 'SAB', apiSymbol: 'SAB.VN', companyName: 'Tổng CTCP Bia – Rượu – Nước giải khát Sài Gòn', exchange: 'HOSE'),
 ];
 
+/// Map hỗ trợ tra cứu nhanh (Lookup Map) mã chứng khoán dựa theo symbol (ví dụ 'FPT').
+/// Giúp tìm kiếm mã nhanh với độ phức tạp O(1) thay vì phải dùng vòng lặp (O(n)).
 final Map<String, StockSymbol> kStockSymbolLookup = <String, StockSymbol>{
   for (final StockSymbol symbol in kTrackedStockSymbols) symbol.displaySymbol: symbol,
 };

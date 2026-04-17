@@ -63,7 +63,30 @@ Sử dụng **Provider**. Đây là lựa chọn tối ưu cho dự án vì tín
 ### **Screens & Widgets**
 - Các UI Components tái sử dụng linh hoạt như `MiniSparkline` cùng với `fl_chart` mang đến giao diện trực quan và thân thiện.
 
-## 5. Công nghệ sử dụng
+## 5. Luồng hoạt động của ứng dụng (Data Flow)
+
+Để giúp bạn dễ dàng nắm bắt logic code, đây là luồng hoạt động chính:
+
+1. **Khởi động App (`main.dart`)**:
+   - `WidgetsFlutterBinding.ensureInitialized()` được gọi để chuẩn bị môi trường.
+   - Khởi tạo thư viện `Talker` (thông qua `LoggerService`) để ghi chép log.
+   - Bọc toàn bộ ứng dụng (`AppBootstrap`) bằng `ChangeNotifierProvider<WatchlistProvider>`. Điều này giúp danh sách theo dõi chứng khoán khả dụng ở mọi màn hình.
+
+2. **Quản lý State Toàn cục (`WatchlistProvider`)**:
+   - Ngay từ khi được khởi tạo, provider sẽ đọc dữ liệu từ `SharedPreferences` để biết người dùng đang theo dõi mã nào.
+   - Đồng thời, provider gọi đến `YahooFinanceService` để lấy danh sách mã toàn thị trường từ Yahoo (cache lại nếu có) để phục vụ cho tính năng tìm kiếm.
+
+3. **Giao tiếp Dữ liệu (`YahooFinanceService`)**:
+   - Khi bất kỳ màn hình nào cần lấy Giá hiện tại, Biểu đồ lịch sử, hoặc Thông tin cổ phiếu, nó sẽ gọi các hàm trong `YahooFinanceService`.
+   - Lớp này sử dụng `_YahooAuthManager` tự động gọi một session request ẩn đến máy chủ Yahoo để chộp lấy (fetch) một Cookies và Crumb hợp lệ (đây là cách cấp quyền ngầm của Yahoo Finance).
+   - Sau đó kèm Cookie & Crumb đó vào request (ví dụ: `v8/finance/chart/FPT.VN`) để lấy chuỗi JSON trả về. Cuối cùng parse JSON thành Model (như `Stock`, `MarketIndex`).
+
+4. **Hiển thị Dữ liệu (Ví dụ `HomeScreen`)**:
+   - Màn hình chính sử dụng `FutureBuilder` để tải đồng thời nhiều phần (Chỉ số TT, Tin tức, Danh mục Watchlist).
+   - Provider lắng nghe và báo với `HomeScreen` mỗi khi danh sách Watchlist bị đổi đi (Thêm, Xóa), sau đó `HomeScreen` sẽ re-fetch giá cho các mã đó.
+   - Component con `MiniSparkline` độc lập gọi API riêng lẻ để lấy biểu đồ thu nhỏ (sparkline) trong 7 ngày, với cache tránh gọi trùng lặp.
+
+## 6. Công nghệ sử dụng
 - **Framework**: Flutter (v3.x)
 - **State Management**: Provider
 - **Local Storage**: SharedPreferences (Lưu watchlist và cấu hình cục bộ)
@@ -71,7 +94,7 @@ Sử dụng **Provider**. Đây là lựa chọn tối ưu cho dự án vì tín
 - **Log Management**: Talker
 - **Charts**: fl_chart / CustomPaint (Cho sparkline)
 
-## 6. Hướng dẫn cài đặt
+## 7. Hướng dẫn cài đặt
 
 1. **Clone dự án và cài đặt thư viện**:
    ```bash
@@ -79,10 +102,9 @@ Sử dụng **Provider**. Đây là lựa chọn tối ưu cho dự án vì tín
    ```
 
 2. **Chạy ứng dụng**:
-   Không cần phải thêm bất kỳ API key hay tham số `.env` rườm rà nào, vì dự án đã được tích hợp Yahoo Finance Service mới nhất để trực tiếp handle chứng thực (Cookies/Crumbs). Nhấn chạy ứng dụng bằng lệnh:
+   Nhấn chạy ứng dụng bằng lệnh:
    ```bash
    flutter run
    ```
 
 ---
-*Dự án thiết kế với phương châm Architecture Clean, kết hợp truy xuất nguồn dữ liệu trực tiếp từ Yahoo mang lại sự ổn định và dồi dào tài nguyên.*

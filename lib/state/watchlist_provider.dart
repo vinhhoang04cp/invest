@@ -7,16 +7,20 @@ import '../constants/stock_symbols.dart';
 import '../models/stock_symbol_model.dart';
 import '../services/yahoo_finance_service.dart';
 
+/// Dịch vụ Provider cấp phát và điều phối danh sách Cổ phiếu yêu thích (Watchlist)
+/// Nó lấy dữ liệu từ `SharedPreferences` và thông báo (`notifyListeners`) đến
+/// tất cả widget nào đang lắng nghe nó (ví dụ: HomeScreen, WatchlistManageScreen)
+/// mỗi khi danh sách có sự thay đổi.
 class WatchlistProvider extends ChangeNotifier {
   WatchlistProvider() {
     unawaited(_initialize());
   }
 
-  static const String _storageKey = 'watchlist_symbols';
-  static const int _defaultCount = 8;
+  static const String _storageKey = 'watchlist_symbols'; // Key lưu trong bộ nhớ máy
+  static const int _defaultCount = 8; // Số lượng mã hiển thị mặc định
 
-  final List<String> _symbols = <String>[];
-  final List<StockSymbolModel> _allSymbols = <StockSymbolModel>[];
+  final List<String> _symbols = <String>[]; // Danh sách các mã code (Ví dụ: [FPT, VNM])
+  final List<StockSymbolModel> _allSymbols = <StockSymbolModel>[]; // Kho chứa danh sách toàn thị trường
   Map<String, StockSymbolModel> _symbolLookup = <String, StockSymbolModel>{};
   bool _isLoading = true;
 
@@ -26,6 +30,7 @@ class WatchlistProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   List<StockSymbolModel> get availableSymbols => _allSymbols;
 
+  /// Lấy danh sách các model của watchlist hiện tại.
   List<StockSymbolModel> get trackedSymbols {
     // Return cached result if available
     if (_trackedSymbolsCache != null) {
@@ -55,6 +60,7 @@ class WatchlistProvider extends ChangeNotifier {
     return _symbols.contains(displaySymbol.toUpperCase());
   }
 
+  /// Thêm một mã chứng khoán mới vào danh sách yêu thích và lưu trữ.
   Future<void> addSymbol(String displaySymbol) async {
     final String code = displaySymbol.toUpperCase();
     if (_symbols.contains(code)) {
@@ -67,6 +73,7 @@ class WatchlistProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Xóa một mã khỏi danh sách.
   Future<void> removeSymbol(String displaySymbol) async {
     if (_symbols.remove(displaySymbol.toUpperCase())) {
       await _save();
@@ -75,6 +82,7 @@ class WatchlistProvider extends ChangeNotifier {
     }
   }
 
+  /// Đổi vị trí (sắp xếp lại) danh sách mã.
   Future<void> reorder(int oldIndex, int newIndex) async {
     if (oldIndex < newIndex) {
       newIndex -= 1;

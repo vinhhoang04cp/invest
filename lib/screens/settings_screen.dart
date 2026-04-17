@@ -4,6 +4,8 @@ import '../models/user.dart';
 import '../services/yahoo_finance_service.dart';
 import 'profile_screen.dart';
 
+/// Màn hình Cài đặt hệ thống.
+/// Tập trung quản lý cấu hình giao diện Dark Mode, đổi Ngôn ngữ hoặc mở trang sửa Hồ sơ cá nhân.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 

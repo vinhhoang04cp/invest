@@ -1,9 +1,10 @@
 import 'package:talker_flutter/talker_flutter.dart';
 
-/// Singleton logger instance
+/// Thể hiện (instance) chung duy nhất (Singleton) của thư viện Talker.
 final talker = Talker();
 
-/// Logger service wrapper
+/// Lớp dịch vụ (Service layer) bao bọc thư viện Talker.
+/// Nhiệm vụ: Ghi chép (log) hệ thống, quản lý lỗi (error log) và theo dõi luồng gọi API.
 class LoggerService {
   LoggerService._internal();
 
@@ -13,12 +14,12 @@ class LoggerService {
     return _instance;
   }
 
-  /// Log info message
+  /// Ghi chép (log) thông tin thông thường.
   void info(String message, [dynamic data]) {
     talker.info(message, data);
   }
 
-  /// Log error message
+  /// Ghi chép cảnh báo lỗi (đỏ) kèm theo dấu vết (StackTrace) để dễ debug.
   void error(String message, [dynamic error, StackTrace? stackTrace]) {
     if (error is Exception) {
       talker.error(message, error, stackTrace);
@@ -47,7 +48,7 @@ class LoggerService {
     talker.debug('API Response: $statusCode - $url', body);
   }
 
-  /// Log API error
+  /// Ghi chép chi tiết của một response lỗi lúc gọi API.
   void logApiError(String url, {required dynamic error, StackTrace? stackTrace}) {
     talker.error('API Error: $url', error, stackTrace);
   }

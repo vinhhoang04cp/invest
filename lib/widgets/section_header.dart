@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// Widget Title dùng chung, hiển thị tiêu đề in đậm kèm theo nút "Xem tất cả" ở góc phải.
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,

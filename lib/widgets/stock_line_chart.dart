@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../models/stock.dart';
 
+/// Khối biểu đồ đường chính hiển thị diễn biến giá chứng khoán dùng chung trong trang Chi tiết.
+/// Khác với Sparkline, biểu đồ này to hơn, có hiển thị trục tọa độ và có thể tương tác (chạm để xem giá).
 class StockLineChart extends StatelessWidget {
   const StockLineChart({
     required this.points,

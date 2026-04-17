@@ -1,3 +1,4 @@
+/// Mô hình đại diện cho hồ sơ, thông tin cá nhân và cài đặt ứng dụng của người dùng.
 class UserProfile {
   const UserProfile({
     required this.fullName,
@@ -8,12 +9,12 @@ class UserProfile {
     required this.darkMode,
   });
 
-  final String fullName;
-  final String email;
-  final String phone;
-  final bool receiveNotifications;
-  final String preferredLanguage;
-  final bool darkMode;
+  final String fullName;          // Họ và tên
+  final String email;             // Địa chỉ email
+  final String phone;             // Số điện thoại
+  final bool receiveNotifications;// Tùy chọn nhận thông báo push hay không
+  final String preferredLanguage; // Ngôn ngữ ưu tiên (vi, en)
+  final bool darkMode;            // Cài đặt giao diện Tối/Sáng
 
   UserProfile copyWith({
     String? fullName,

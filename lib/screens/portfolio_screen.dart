@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/portfolio.dart';
 import '../services/yahoo_finance_service.dart';
 
+/// Màn hình quản lý Danh mục đầu tư cá nhân (Portfolio).
+/// Tính toán và hiển thị các khoản tiền đã đầu tư, tổng giá trị tài sản ròng và ước lượng Lời/Lỗ.
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 

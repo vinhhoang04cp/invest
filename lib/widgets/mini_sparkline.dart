@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import '../models/stock.dart';
 import '../services/yahoo_finance_service.dart';
 
+/// Widget Biểu đồ thu nhỏ (Sparkline). 
+/// Đây là widget "thông minh" vì nó tự gọi API `YahooFinanceService.fetchIntradayPrices`
+/// để vẽ biểu đồ và có cơ chế lưu đệm (Caching) tránh gọi chồng chéo, tiết kiệm tài nguyên.
 class MiniSparkline extends StatefulWidget {
   const MiniSparkline({
     required this.symbol,

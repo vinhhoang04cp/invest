@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/stock_symbol_model.dart';
 import '../state/watchlist_provider.dart';
 
+/// Màn hình thiết lập và Quản lý Danh sách theo dõi (Watchlist).
+/// Hỗ trợ thao tác vuốt dọn / kéo thả (Reorder) mã để sắp xếp vị trí hiển thị ngoài màn chính.
 class WatchlistManageScreen extends StatefulWidget {
   const WatchlistManageScreen({super.key});
 
