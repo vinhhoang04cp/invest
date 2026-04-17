@@ -209,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: indices.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (BuildContext context, int index) {
               final MarketIndex marketIndex = indices[index];
               final bool positive = marketIndex.isPositive;

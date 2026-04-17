@@ -1,25 +1,27 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
+import 'dart:async'; // thư viện xử lý bất đồng bộ
+import 'dart:convert'; // thư viện xử lý chuỗi json
+import 'dart:math'; // thư viện xử lý số ngẫu nhiên
 
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http; // thư viện xử lý http request 
 
-import '../constants/stock_symbols.dart';
-import '../models/market_index.dart';
-import '../models/market_news.dart';
-import '../models/portfolio.dart';
-import '../models/stock.dart';
-import '../models/stock_symbol_model.dart';
-import '../models/user.dart';
-import 'logger_service.dart';
+import '../constants/stock_symbols.dart'; // thư viện chứa danh sách mã chứng khoán
+import '../models/market_index.dart'; // thư viện chứa mô hình chỉ số thị trường
+import '../models/market_news.dart'; // thư viện chứa mô hình tin tức thị trường
+import '../models/portfolio.dart'; // thư viện chứa mô hình danh mục đầu tư
+import '../models/stock.dart'; // thư viện chứa mô hình chứng khoán
+import '../models/stock_symbol_model.dart'; // thư viện chứa mô hình mã chứng khoán
+import '../models/user.dart'; // thư viện chứa mô hình người dùng
+import 'logger_service.dart'; // thư viện chứa mô hình logger
 
 // ---------------------------------------------------------------------------
 // Yahoo Finance Auth Manager
 // Uses the fc.yahoo.com + getcrumb approach (most reliable method)
 // ---------------------------------------------------------------------------
 
+
+// class _YahooAuthManager là một lớp quản lý xác thực Yahoo Finance
 class _YahooAuthManager {
-  _YahooAuthManager(this._client, this._logger);
+  _YahooAuthManager(this._client, this._logger); // constructor lấy http.Client và LoggerService
 
   final http.Client _client;
   final LoggerService _logger;
