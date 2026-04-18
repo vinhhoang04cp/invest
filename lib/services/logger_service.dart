@@ -28,22 +28,22 @@ class LoggerService {
     }
   }
 
-  /// Log warning message
+  /// Ghi chép cảnh báo (warning) cho các trường hợp không mong muốn nhưng chưa gây sập ứng dụng.
   void warning(String message, [dynamic data]) {
     talker.warning(message, data);
   }
 
-  /// Log debug message
+  /// Theo dõi ghi chép (debug) dùng cho lập trình viên theo dõi biến số.
   void debug(String message, [dynamic data]) {
     talker.debug(message, data);
   }
 
-  /// Log API request
+  /// Lưu vết một chiều gọi mạng (API Request) với thông tin Method và URL kèm params nếu có.
   void logApiCall(String method, String url, {Map<String, dynamic>? params}) {
     talker.debug('API: $method $url', {'params': params});
   }
 
-  /// Log API response
+  /// Lưu vết dữ liệu máy chủ trả về (API Response), bao gồm mã kết quả và độ dài gói tin.
   void logApiResponse(String url, {required int statusCode, required dynamic body}) {
     talker.debug('API Response: $statusCode - $url', body);
   }

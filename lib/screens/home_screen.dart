@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart'; // Mở URL trong browser ngoài
 
 import '../models/market_index.dart';
 import '../models/market_news.dart';
@@ -14,9 +14,32 @@ import 'stock_detail_screen.dart';
 import 'stock_list_screen.dart';
 import 'watchlist_manage_screen.dart';
 
-/// Màn hình Trang Chủ (Dashboard) - Màn hình đầu tiên xuất hiện khi chạy ứng dụng.
-/// Chịu trách nhiệm hiển thị Tổng quan thị trường (Chỉ số), Danh sách theo dõi (Watchlist) 
-/// và các Tin tức tài chính mới nhất. Lấy liên kết trực tiếp với Service và WatchlistProvider.
+// =============================================================================
+// HomeScreen — Màn hình Trang Chủ (Dashboard)
+// =============================================================================
+//
+// Đây là màn hình phức tạp nhất, kết hợp 2 luồng dữ liệu:
+//
+// 1. SYNC (ChangeNotifier): WatchlistProvider — danh sách mã theo dõi
+//    Lắng nghe bằng addListener → khi watchlist thay đổi → reload data
+//
+// 2. ASYNC (FutureBuilder): _homeDataFuture — dữ liệu thị trường từ API
+//    Gọi 3 API song song (indices + watchlist prices + news)
+//
+// CÁCH UI BUILD:
+//   Scaffold
+//   └─ FutureBuilder<_HomeScreenData>
+//       └─ RefreshIndicator (pull-to-refresh)
+//           └─ CustomScrollView (Sliver-based scroll)
+//               ├─ SliverAppBar (cuộn ẩn/hiện)
+//               ├─ Chỉ số thị trường (ngang scroll)
+//               ├─ Header "Watchlist"
+//               ├─ Danh sách Watchlist (dọc)
+//               ├─ Header "Tin tức"
+//               └─ Danh sách tin tức
+// =============================================================================
+
+/// Màn hình Trang Chủ — Hiển thị tổng quan thị trường và danh mục theo dõi.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -26,13 +49,22 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final YahooFinanceService _apiService = YahooFinanceService.instance;
+
+  // Future chứa tất cả data cần thiết cho HomeScreen
+  // late: sẽ gán giá trị ngay trong initState (trước khi dùng)
   late Future<_HomeScreenData> _homeDataFuture;
+
+  // Tham chiếu đến WatchlistProvider để add/remove listener
   late WatchlistProvider _watchlistProvider;
+
+  // Cờ ngăn setup provider nhiều lần (didChangeDependencies gọi nhiều lần)
   bool _didSetupProvider = false;
 
   @override
   void initState() {
     super.initState();
+    // Khởi tạo với dữ liệu rỗng (placeholder) để FutureBuilder không bị null
+    // Future.value() = tạo Future đã completed với giá trị sẵn
     _homeDataFuture = Future<_HomeScreenData>.value(
       const _HomeScreenData(
         indices: <MarketIndex>[],
@@ -43,18 +75,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // didChangeDependencies — Lắng nghe WatchlistProvider
+  // ---------------------------------------------------------------------------
+
+  /// Gọi mỗi khi InheritedWidget (Provider) trên widget tree thay đổi.
+  ///
+  /// Khác với initState (chỉ gọi 1 lần):
+  /// - didChangeDependencies gọi sau initState LẦN ĐẦU
+  /// - Gọi lại khi Provider instance thay đổi (hot reload, provider re-created)
+  ///
+  /// Dùng _didSetupProvider để chỉ setup listener 1 lần, tránh leak listener.
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Lấy WatchlistProvider hiện tại từ context
     final WatchlistProvider provider = Provider.of<WatchlistProvider>(context);
+
     if (!_didSetupProvider) {
+      // Lần đầu: setup listener và load data
       _watchlistProvider = provider;
       if (!provider.isLoading) {
+        // Chỉ load data khi provider đã xong khởi tạo (isLoading = false)
         _homeDataFuture = _loadData(provider.trackedSymbols);
       }
-      provider.addListener(_onWatchlistChanged);
+      provider.addListener(_onWatchlistChanged); // Đăng ký lắng nghe thay đổi
       _didSetupProvider = true;
     } else if (!identical(_watchlistProvider, provider)) {
+      // Provider instance bị thay (thường khi hot reload):
+      // Xóa listener cũ, đăng ký listener mới
       _watchlistProvider.removeListener(_onWatchlistChanged);
       _watchlistProvider = provider;
       _watchlistProvider.addListener(_onWatchlistChanged);
@@ -66,34 +115,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    // QUAN TRỌNG: Phải xóa listener khi widget bị destroy
+    // Không làm → memory leak (provider giữ reference đến widget đã chết)
     if (_didSetupProvider) {
       _watchlistProvider.removeListener(_onWatchlistChanged);
     }
     super.dispose();
   }
 
+  /// Callback khi WatchlistProvider thay đổi (add/remove/reorder mã).
   void _onWatchlistChanged() {
-    if (!mounted) return;
+    if (!mounted) return; // Widget đã bị dispose → bỏ qua
+
     if (_watchlistProvider.isLoading) {
-      setState(() {});
+      setState(() {}); // Chỉ trigger rebuild để show/hide loading indicator
       return;
     }
+
+    // Xóa cache sparkline để biểu đồ miniature cập nhật theo watchlist mới
     MiniSparkline.invalidateCache();
+
     setState(() {
+      // Gán Future mới → FutureBuilder sẽ rebuild với data mới
       _homeDataFuture = _loadData(_watchlistProvider.trackedSymbols);
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // _loadData() — Tải toàn bộ dữ liệu màn hình
+  // ---------------------------------------------------------------------------
+
+  /// Tải dữ liệu từ 3 nguồn API riêng biệt và gộp vào [_HomeScreenData].
+  ///
+  /// Dùng try/catch riêng lẻ cho từng nguồn: nếu 1 API lỗi thì 2 cái kia
+  /// vẫn hiển thị bình thường (graceful degradation).
   Future<_HomeScreenData> _loadData(List<StockSymbolModel> trackedSymbols) async {
-    // Fetch each section independently so one failure doesn't block the rest
     List<MarketIndex> indices = <MarketIndex>[];
     List<Stock> watchlist = <Stock>[];
     List<MarketNews> news = <MarketNews>[];
 
+    // Gọi song song hay tuần tự? Hiện tại tuần tự để tránh overload auth.
+    // Tối ưu: dùng Future.wait([f1, f2, f3]) để chạy song song.
+
     try {
       indices = await _apiService.fetchMarketIndices();
     } catch (e) {
-      debugPrint('Failed to load indices: $e');
+      debugPrint('Failed to load indices: $e'); // Không crash app, chỉ log
     }
 
     try {
@@ -118,6 +185,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // build() — Xây dựng toàn bộ UI
+  // ---------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
@@ -126,12 +197,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: FutureBuilder<_HomeScreenData>(
         future: _homeDataFuture,
         builder: (BuildContext context, AsyncSnapshot<_HomeScreenData> snapshot) {
+          // Case 1: Provider chưa sẵn sàng hoặc đang loading
           if (!_didSetupProvider || (_didSetupProvider && _watchlistProvider.isLoading)) {
             return const Center(child: CircularProgressIndicator());
           }
+          // Case 2: API đang fetch
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          // Case 3: Lỗi nghiêm trọng
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -140,15 +214,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }
-          final _HomeScreenData data = snapshot.data!;
+          // Case 4: Thành công → Render UI
+          final _HomeScreenData data = snapshot.data!; // `!` vì ta đã check hasError
           return RefreshIndicator(
             onRefresh: () async {
-              MiniSparkline.invalidateCache();
+              MiniSparkline.invalidateCache(); // Xóa cache biểu đồ miniature
               setState(() {
                 _homeDataFuture = _loadData(_watchlistProvider.trackedSymbols);
               });
-              await _homeDataFuture;
+              await _homeDataFuture; // Chờ load xong rồi mới dismiss indicator
             },
+            // CustomScrollView + Slivers: tối ưu hiệu năng scroll cho list dài
+            // BouncingScrollPhysics: hiệu ứng bounce khi scroll hết trang (iOS style)
+            // AlwaysScrollableScrollPhysics: cho phép pull-to-refresh dù nội dung ngắn
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
               slivers: <Widget>[
@@ -158,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildWatchlistSliver(context, data),
                 _buildNewsHeader(context),
                 _buildNewsSliver(context, data.news),
-                const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 32)), // Safe area bottom
               ],
             ),
           );
@@ -167,6 +245,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Builder methods — Mỗi hàm build 1 phần UI
+  // ---------------------------------------------------------------------------
+
+  /// AppBar cuộn theo với tiêu đề + 2 action button (edit watchlist, search).
+  ///
+  /// [pinned: true]: AppBar dính trên cùng khi scroll → không bị cuộn mất
+  /// [floating: true]: AppBar xuất hiện ngay khi bắt đầu scroll lên
+  /// [snap: true]: AppBar trượt vào/ra hoàn toàn (không dừng giữa chừng)
   SliverAppBar _buildAppBar(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return SliverAppBar(
@@ -202,25 +289,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Danh sách chỉ số thị trường cuộn NGANG (VN-Index, HNX...).
+  ///
+  /// SliverToBoxAdapter: bọc widget thông thường để dùng được trong CustomScrollView.
+  /// ListView.horizontal bên trong = scroll ngang độc lập với scroll dọc bên ngoài.
   SliverToBoxAdapter _buildIndicesSliver(BuildContext context, List<MarketIndex> indices) {
     final ThemeData theme = Theme.of(context);
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
         child: SizedBox(
-          height: 160,
+          height: 160, // Chiều cao cố định cho horizontal list
           child: ListView.separated(
-            scrollDirection: Axis.horizontal,
+            scrollDirection: Axis.horizontal, // Scroll ngang
             itemCount: indices.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16), // Khoảng cách giữa card
             itemBuilder: (BuildContext context, int index) {
               final MarketIndex marketIndex = indices[index];
               final bool positive = marketIndex.isPositive;
+              // Màu xanh nếu tăng, đỏ nếu giảm
               final Color changeColor = positive ? Colors.greenAccent : Colors.redAccent;
               return Container(
                 width: 220,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
+                  // Gradient xanh hoặc đỏ tùy theo chiều thị trường
                   gradient: LinearGradient(
                     colors: positive
                         ? <Color>[const Color(0xFF0F9B0F), const Color(0xFF5AC994)]
@@ -241,11 +334,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Text(marketIndex.name, style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                    // Tên chỉ số
+                    Text(marketIndex.name,
+                        style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                    // Giá trị điểm số
                     Text(
                       marketIndex.value.toStringAsFixed(2),
-                      style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: theme.textTheme.headlineSmall
+                          ?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
+                    // Icon trend + % thay đổi
                     Row(
                       children: <Widget>[
                         Icon(
@@ -270,6 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Header "Watchlist" với nút "Xem tất cả" → navigate sang StockListScreen.
   SliverToBoxAdapter _buildWatchlistHeader(BuildContext context) {
     return SliverToBoxAdapter(
       child: SectionHeader(
@@ -279,10 +378,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Danh sách card watchlist (hiển thị tối đa 8 mã).
+  ///
+  /// Logic đảm bảo THỨ TỰ HIỂN THỊ đúng theo thứ tự người dùng cài:
+  /// 1. Tạo Map<symbol, Stock> để lookup O(1)
+  /// 2. Duyệt qua trackedSymbols (theo thứ tự người dùng)
+  /// 3. Lookup Stock tương ứng → giữ nguyên thứ tự
+  ///
+  /// Vấn đề nếu không làm vậy: API trả về thứ tự ngẫu nhiên → UI nhảy loạn.
   Widget _buildWatchlistSliver(BuildContext context, _HomeScreenData data) {
+    // Tạo Map để tra nhanh: "FPT" → Stock object
     final Map<String, Stock> stockMap = <String, Stock>{
       for (final Stock stock in data.watchlist) stock.symbol.toUpperCase(): stock,
     };
+
+    // Sắp xếp theo thứ tự trackedSymbols (thứ tự người dùng đặt)
     final List<Stock> ordered = <Stock>[];
     for (final StockSymbolModel symbol in data.trackedSymbols) {
       final Stock? stock = stockMap[symbol.displaySymbol.toUpperCase()];
@@ -290,7 +400,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ordered.add(stock);
       }
     }
-    final List<Stock> watchlist = ordered.take(8).toList();
+
+    final List<Stock> watchlist = ordered.take(8).toList(); // Tối đa 8 mã
+
     if (watchlist.isEmpty) {
       return const SliverToBoxAdapter(
         child: Padding(
@@ -299,6 +411,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+
+    // Tạo list widget card + SizedBox khoảng cách
     final List<Widget> children = <Widget>[];
     for (int i = 0; i < watchlist.length; i++) {
       final Stock stock = watchlist[i];
@@ -307,28 +421,32 @@ class _HomeScreenState extends State<HomeScreen> {
           stock: stock,
           onTap: () => Navigator.of(context).pushNamed(
             StockDetailScreen.routeName,
-            arguments: StockDetailArgs(stock: stock),
+            arguments: StockDetailArgs(stock: stock), // Truyền dữ liệu qua arguments
           ),
         ),
       );
       if (i < watchlist.length - 1) {
-        children.add(const SizedBox(height: 12));
+        children.add(const SizedBox(height: 12)); // Khoảng cách giữa card
       }
     }
+
+    // SliverPadding + SliverList: cách đúng để render List trong CustomScrollView
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       sliver: SliverList(
-        delegate: SliverChildListDelegate(children),
+        delegate: SliverChildListDelegate(children), // Fixed list (không lazy load)
       ),
     );
   }
 
+  /// Header "Tin tức mới nhất" (không có nút Xem tất cả).
   SliverToBoxAdapter _buildNewsHeader(BuildContext context) {
     return const SliverToBoxAdapter(
       child: SectionHeader(title: 'Tin tức mới nhất'),
     );
   }
 
+  /// Danh sách card tin tức.
   Widget _buildNewsSliver(BuildContext context, List<MarketNews> news) {
     if (news.isEmpty) {
       return const SliverToBoxAdapter(
@@ -347,9 +465,9 @@ class _HomeScreenState extends State<HomeScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ListTile(
             title: Text(item.title),
-            subtitle: Text('${item.source} • ${item.timeAgo}'),
+            subtitle: Text('${item.source} • ${item.timeAgo}'), // timeAgo từ getter
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () => _openNewsUrl(item.url),
+            onTap: () => _openNewsUrl(item.url), // Mở URL trong browser ngoài
           ),
         ),
       );
@@ -359,12 +477,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      sliver: SliverList(
-        delegate: SliverChildListDelegate(tiles),
-      ),
+      sliver: SliverList(delegate: SliverChildListDelegate(tiles)),
     );
   }
 
+  /// Mở URL tin tức trong trình duyệt ngoài.
+  ///
+  /// canLaunchUrl: kiểm tra thiết bị có app nào handle URL không
+  /// launchUrl + LaunchMode.externalApplication: mở trong browser ngoài (không WebView)
   Future<void> _openNewsUrl(String? url) async {
     if (url == null || url.isEmpty) {
       if (mounted) {
@@ -381,45 +501,56 @@ class _HomeScreenState extends State<HomeScreen> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Không thể mở link')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Không thể mở link')));
         }
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Lỗi: $error')));
       }
     }
   }
 }
 
+// =============================================================================
+// _WatchlistCard — Widget Card hiển thị 1 mã cổ phiếu trong Watchlist
+// =============================================================================
+
+/// Card watchlist: hiển thị symbol, tên, giá + biểu đồ sparkline + % thay đổi.
+///
+/// Private class (prefix `_`): chỉ dùng nội bộ trong file này.
+/// StatelessWidget vì không có state riêng (nhận data từ parent qua constructor).
 class _WatchlistCard extends StatelessWidget {
   const _WatchlistCard({required this.stock, required this.onTap});
 
   final Stock stock;
-  final VoidCallback onTap;
+  final VoidCallback onTap; // VoidCallback = void Function() — không tham số không trả về
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final bool isPositive = stock.changePercent >= 0;
     final Color changeColor = isPositive ? const Color(0xFF4CAF50) : const Color(0xFFE53935);
+
+    // InkWell: hiệu ứng ripple khi nhấn (Material Design)
+    // Ink: layer để InkWell ripple đúng trên nền container có decoration
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(20), // Phải khớp với Ink để ripple đúng形
       child: Ink(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
+          // surfaceContainerHighest: màu surface nổi nhẹ (Material 3)
           color: theme.colorScheme.surfaceContainerHighest.withOpacity(.4),
           border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(.3)),
         ),
         child: Row(
           children: <Widget>[
-            Expanded(
+            // Cột trái: symbol, tên, giá
+            Expanded( // Expanded: chiếm hết không gian còn lại trong Row
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -432,24 +563,26 @@ class _WatchlistCard extends StatelessWidget {
                   Text(
                     stock.name,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    overflow: TextOverflow.ellipsis, // "..." khi tên quá dài
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '${stock.price.toStringAsFixed(0)} đ',
+                    '${stock.price.toStringAsFixed(0)} đ', // Làm tròn: 125000.5 → "125001 đ"
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 16),
+            // Cột phải: sparkline + % thay đổi
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
                 SizedBox(
                   height: 52,
                   width: 110,
+                  // MiniSparkline: widget tự fetch intraday data và vẽ biểu đồ mini
                   child: MiniSparkline(
                     symbol: stock.symbol,
                     apiSymbol: stock.apiSymbol,
@@ -466,7 +599,8 @@ class _WatchlistCard extends StatelessWidget {
                     ),
                     Text(
                       '${stock.changePercent.toStringAsFixed(2)}%',
-                      style: theme.textTheme.titleMedium?.copyWith(color: changeColor, fontWeight: FontWeight.bold),
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(color: changeColor, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -479,6 +613,16 @@ class _WatchlistCard extends StatelessWidget {
   }
 }
 
+// =============================================================================
+// _HomeScreenData — Container gom dữ liệu màn hình (Internal DTO)
+// =============================================================================
+
+/// Data Transfer Object (DTO) nội bộ: gom tất cả dữ liệu HomeScreen cần.
+///
+/// Dùng class riêng (thay vì Map hay tuple) để:
+/// - Type-safe: compiler kiểm tra kiểu dữ liệu
+/// - Tự document: tên field rõ ràng hơn Map<String, dynamic>
+/// - const constructor: immutable sau khi tạo
 class _HomeScreenData {
   const _HomeScreenData({
     required this.indices,
@@ -487,8 +631,8 @@ class _HomeScreenData {
     required this.trackedSymbols,
   });
 
-  final List<MarketIndex> indices;
-  final List<Stock> watchlist;
-  final List<MarketNews> news;
-  final List<StockSymbolModel> trackedSymbols;
+  final List<MarketIndex> indices;           // Chỉ số thị trường (VN-Index, HNX...)
+  final List<Stock> watchlist;               // Giá thực của các mã watchlist
+  final List<MarketNews> news;               // Tin tức thị trường
+  final List<StockSymbolModel> trackedSymbols; // Thứ tự user đặt (để sắp xếp watchlist)
 }
