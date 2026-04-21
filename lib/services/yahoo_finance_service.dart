@@ -42,6 +42,7 @@ class _YahooAuthManager {
   String? _cookie;     // Cookie session từ Yahoo (vd: "A=...; B=...")
   DateTime? _lastAuth; // Thời điểm xác thực thành công gần nhất (dùng kiểm tra TTL)
   int _failCount = 0;  // Đếm số lần xác thực thất bại liên tiếp (tránh retry vô hạn)
+  bool _isAuthenticating = false; // Mutex ngăn auth chạy đồng thời
 
   // TTL: cookie/crumb chỉ dùng được trong 20 phút, sau đó cần xin lại
   static const Duration _authTtl = Duration(minutes: 20);
@@ -66,14 +67,26 @@ class _YahooAuthManager {
   ///
   /// Nếu [force] = true → bỏ qua cache, bắt buộc xác thực lại (dùng khi nhận 401/403).
   /// Có cơ chế giới hạn: nếu đã thất bại > 3 lần → bỏ qua (tránh gửi request vô nghĩa).
+  /// Cooldown 60 giây sau mỗi lần fail — tránh spam auth requests.
   Future<void> ensureAuth({bool force = false}) async {
     if (!force && _isValid) return; // Còn hợp lệ → dùng tiếp, không làm gì
-    // Đã fail nhiều lần → không thử nữa (trừ khi force)
-    if (_failCount > 3 && !force) {
-      _logger.warning('Yahoo Auth: Thất bại quá nhiều lần, bỏ qua bước xác thực');
-      return;
+    // Đã fail nhiều lần → không thử nữa (kể cả force)
+    if (_failCount > 3) {
+      // Cooldown: chỉ thử lại sau 60 giây kể từ lần auth cuối
+      if (_lastAuth != null &&
+          DateTime.now().difference(_lastAuth!) < const Duration(seconds: 60)) {
+        _logger.warning('Yahoo Auth: Thất bại quá nhiều lần, bỏ qua bước xác thực');
+        return;
+      }
     }
-    await _authenticate();
+    // Mutex: tránh nhiều request cùng trigger auth đồng thời
+    if (_isAuthenticating) return;
+    _isAuthenticating = true;
+    try {
+      await _authenticate();
+    } finally {
+      _isAuthenticating = false;
+    }
   }
 
   /// Xóa thông tin xác thực hiện tại khỏi bộ nhớ.
@@ -316,6 +329,10 @@ class YahooFinanceService {
   // Cache danh sách tất cả symbol VN — tránh fetch lại nhiều lần
   List<StockSymbolModel>? _cachedSymbols;
 
+  // Circuit breaker: bỏ qua v7/quote nếu đã fail liên tiếp
+  int _v7FailCount = 0;
+  DateTime? _v7LastFail;
+
   // ===========================================================================
   // Helper Methods (dùng nội bộ)
   // ===========================================================================
@@ -337,7 +354,7 @@ class YahooFinanceService {
   /// 1. Gọi `ensureAuth()` để đảm bảo cookie/crumb còn hạn
   /// 2. Gắn crumb vào URL query params
   /// 3. Gắn cookie vào headers
-  /// 4. Nếu nhận 401/403 → invalidate auth → xin lại → retry 1 lần
+  /// 4. Nếu nhận 401/403 → invalidate auth → xin lại → retry 1 lần (có giới hạn)
   Future<http.Response> _authGet(Uri uri) async {
     await _auth.ensureAuth(); // Đảm bảo đã xác thực
 
@@ -350,15 +367,19 @@ class YahooFinanceService {
         statusCode: response.statusCode, body: '(${response.body.length} bytes)');
 
     // Xác thực hết hạn giữa chừng → xin lại và thử lại 1 lần
-    if (response.statusCode == 401 || response.statusCode == 403) {
+    // Chỉ retry nếu auth chưa fail quá nhiều (tránh vòng lặp vô tận)
+    if ((response.statusCode == 401 || response.statusCode == 403) && _auth.hasAuth) {
       _logger.warning('Yahoo: Got ${response.statusCode}, re-authenticating...');
       _auth.invalidate();               // Xóa auth cũ
       await _auth.ensureAuth(force: true); // Bắt buộc xin lại
 
-      final Uri retryUri = _auth.withCrumb(uri); // URI mới với crumb mới
-      response = await _client.get(retryUri, headers: _auth.headers);
-      _logger.logApiResponse(retryUri.toString(),
-          statusCode: response.statusCode, body: '(${response.body.length} bytes)');
+      // Chỉ retry nếu auth thành công (có crumb mới)
+      if (_auth.crumb != null) {
+        final Uri retryUri = _auth.withCrumb(uri); // URI mới với crumb mới
+        response = await _client.get(retryUri, headers: _auth.headers);
+        _logger.logApiResponse(retryUri.toString(),
+            statusCode: response.statusCode, body: '(${response.body.length} bytes)');
+      }
     }
 
     return response;
@@ -397,21 +418,36 @@ class YahooFinanceService {
   /// Lấy giá và thông tin thị trường của nhiều mã cổ phiếu cùng lúc.
   ///
   /// Chiến lược:
-  /// 1. Thử `v7/finance/quote` (endpoint chính thức, đầy đủ fields)
-  /// 2. Fallback sang `v8/finance/chart` (ít bị chặn auth hơn)
+  /// 1. Thử `v7/finance/quote` (endpoint chính thức, đầy đủ fields) — bỏ qua nếu circuit breaker mở
+  /// 2. Fallback sang `v8/finance/chart` (ít bị chặn auth hơn, chạy song song)
   ///
   /// [symbols]: danh sách mã display (vd: ['FPT', 'VNM', 'VCB'])
   Future<List<Stock>> fetchQuotes(List<String> symbols) async {
     if (symbols.isEmpty) return <Stock>[];
 
-    // Thử endpoint v7 trước
-    final List<Stock>? v7Result = await _tryFetchQuotesV7(symbols);
-    if (v7Result != null && v7Result.isNotEmpty) {
-      return v7Result;
+    // Circuit breaker: bỏ qua v7 nếu đã fail >= 2 lần trong 5 phút gần đây
+    final bool skipV7 = _v7FailCount >= 2 &&
+        _v7LastFail != null &&
+        DateTime.now().difference(_v7LastFail!) < const Duration(minutes: 5);
+
+    if (!skipV7) {
+      // Thử endpoint v7 trước
+      final List<Stock>? v7Result = await _tryFetchQuotesV7(symbols);
+      if (v7Result != null && v7Result.isNotEmpty) {
+        _v7FailCount = 0; // Reset circuit breaker khi thành công
+        return v7Result;
+      }
+      // v7 thất bại → tăng counter
+      _v7FailCount++;
+      _v7LastFail = DateTime.now();
     }
 
-    // Fallback sang v8/chart nếu v7 lỗi
-    _logger.info('fetchQuotes: v7 lỗi, quay số với endpoint dự phòng v8/chart...');
+    // Fallback sang v8/chart nếu v7 lỗi hoặc bị bỏ qua
+    if (skipV7) {
+      _logger.info('fetchQuotes: v7 circuit breaker mở, dùng thẳng v8/chart...');
+    } else {
+      _logger.info('fetchQuotes: v7 lỗi, quay số với endpoint dự phòng v8/chart...');
+    }
     return _fetchQuotesViaChart(symbols);
   }
 
@@ -499,7 +535,8 @@ class YahooFinanceService {
 
   /// Fallback: Lấy giá cổ phiếu qua endpoint `v8/finance/chart`.
   ///
-  /// Tuy chậm hơn (phải gọi từng mã riêng lẻ thay vì batch),
+  /// Chạy SONG SONG (Future.wait) thay vì tuần tự → nhanh hơn nhiều.
+  /// Giới hạn đồng thời 5 request để không bị rate-limit.
   /// endpoint chart ít bị Yahoo block auth hơn endpoint v7/quote.
   ///
   /// Lấy giá từ field `meta` trong response chart:
@@ -509,70 +546,88 @@ class YahooFinanceService {
   Future<List<Stock>> _fetchQuotesViaChart(List<String> symbols) async {
     final List<Stock> stocks = <Stock>[];
 
-    for (final String symbol in symbols) {
-      try {
-        final String yahooSymbol = toYahooSymbol(symbol);
-        // range=1d&interval=1d: chỉ lấy 1 nến ngày hôm nay (tối thiểu data)
-        final Uri uri = Uri.parse(
-          'https://query1.finance.yahoo.com/v8/finance/chart/$yahooSymbol'
-          '?range=1d&interval=1d&includePrePost=false',
-        );
+    // Chia thành batch nhỏ (5 mã/batch) để tránh rate-limit
+    const int batchSize = 5;
+    for (int batchStart = 0; batchStart < symbols.length; batchStart += batchSize) {
+      final List<String> batch = symbols.skip(batchStart).take(batchSize).toList();
 
-        final http.Response response = await _authGet(uri);
-        if (response.statusCode != 200) continue; // Bỏ qua mã lỗi
+      // Chạy song song trong mỗi batch
+      final List<Stock?> batchResults = await Future.wait(
+        batch.map((String symbol) => _fetchSingleChartQuote(symbol)),
+      );
 
-        final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-        // Chuỗi drill-down: data → chart → result → [0]
-        final List<dynamic>? results =
-            (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
-        if (results == null || results.isEmpty) continue;
-
-        final Map<String, dynamic> result = results.first as Map<String, dynamic>;
-        final Map<String, dynamic>? meta = result['meta'] as Map<String, dynamic>?;
-        if (meta == null) continue;
-
-        final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
-        // chartPreviousClose ưu tiên hơn previousClose (Yahoo dùng tên khác nhau)
-        final double prevClose = (meta['chartPreviousClose'] as num?)?.toDouble() ??
-            (meta['previousClose'] as num?)?.toDouble() ??
-            price; // Fallback = bằng giá hiện tại (change = 0%)
-        // Tính % thay đổi thủ công: ((giá mới - giá cũ) / giá cũ * 100)
-        final double changePercent = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
-
-        final String displaySymbol = symbol.toUpperCase().replaceAll('.VN', '');
-
-        // Lấy volume từ cấu trúc indicators.quote[0].volume (phức tạp hơn)
-        int volume = 0;
-        final Map<String, dynamic>? indicators = result['indicators'] as Map<String, dynamic>?;
-        final List<dynamic>? quoteList = indicators?['quote'] as List<dynamic>?;
-        if (quoteList != null && quoteList.isNotEmpty) {
-          final Map<String, dynamic> quote = quoteList.first as Map<String, dynamic>;
-          final List<dynamic>? volumes = quote['volume'] as List<dynamic>?;
-          if (volumes != null && volumes.isNotEmpty) {
-            volume = (volumes.last as num?)?.toInt() ?? 0; // `.last` = nến gần nhất
-          }
-        }
-
-        // Tìm tên công ty từ constants (Yahoo đôi khi trả về tên tiếng Anh đơn giản)
-        final StockSymbol? knownSymbol = kStockSymbolLookup[displaySymbol];
-
-        stocks.add(Stock(
-          symbol: displaySymbol,
-          name: knownSymbol?.companyName ?? meta['shortName'] as String? ?? displaySymbol,
-          price: price,
-          changePercent: changePercent,
-          volume: volume,
-          apiSymbol: yahooSymbol,
-          previousClose: prevClose,
-          dayHigh: (meta['regularMarketDayHigh'] as num?)?.toDouble(),
-          dayLow: (meta['regularMarketDayLow'] as num?)?.toDouble(),
-        ));
-      } catch (e) {
-        _logger.warning('v8/chart fallback failed for $symbol: $e');
+      // Lọc null (mã lỗi) và thêm vào danh sách
+      for (final Stock? stock in batchResults) {
+        if (stock != null) stocks.add(stock);
       }
     }
 
     return stocks;
+  }
+
+  /// Lấy giá 1 mã cổ phiếu từ v8/chart. Trả về null nếu lỗi.
+  Future<Stock?> _fetchSingleChartQuote(String symbol) async {
+    try {
+      final String yahooSymbol = toYahooSymbol(symbol);
+      // range=1d&interval=1d: chỉ lấy 1 nến ngày hôm nay (tối thiểu data)
+      final Uri uri = Uri.parse(
+        'https://query1.finance.yahoo.com/v8/finance/chart/$yahooSymbol'
+        '?range=1d&interval=1d&includePrePost=false',
+      );
+
+      final http.Response response = await _authGet(uri);
+      if (response.statusCode != 200) return null; // Bỏ qua mã lỗi
+
+      final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+      // Chuỗi drill-down: data → chart → result → [0]
+      final List<dynamic>? results =
+          (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
+      if (results == null || results.isEmpty) return null;
+
+      final Map<String, dynamic> result = results.first as Map<String, dynamic>;
+      final Map<String, dynamic>? meta = result['meta'] as Map<String, dynamic>?;
+      if (meta == null) return null;
+
+      final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
+      // chartPreviousClose ưu tiên hơn previousClose (Yahoo dùng tên khác nhau)
+      final double prevClose = (meta['chartPreviousClose'] as num?)?.toDouble() ??
+          (meta['previousClose'] as num?)?.toDouble() ??
+          price; // Fallback = bằng giá hiện tại (change = 0%)
+      // Tính % thay đổi thủ công: ((giá mới - giá cũ) / giá cũ * 100)
+      final double changePercent = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
+
+      final String displaySymbol = symbol.toUpperCase().replaceAll('.VN', '');
+
+      // Lấy volume từ cấu trúc indicators.quote[0].volume (phức tạp hơn)
+      int volume = 0;
+      final Map<String, dynamic>? indicators = result['indicators'] as Map<String, dynamic>?;
+      final List<dynamic>? quoteList = indicators?['quote'] as List<dynamic>?;
+      if (quoteList != null && quoteList.isNotEmpty) {
+        final Map<String, dynamic> quote = quoteList.first as Map<String, dynamic>;
+        final List<dynamic>? volumes = quote['volume'] as List<dynamic>?;
+        if (volumes != null && volumes.isNotEmpty) {
+          volume = (volumes.last as num?)?.toInt() ?? 0; // `.last` = nến gần nhất
+        }
+      }
+
+      // Tìm tên công ty từ constants (Yahoo đôi khi trả về tên tiếng Anh đơn giản)
+      final StockSymbol? knownSymbol = kStockSymbolLookup[displaySymbol];
+
+      return Stock(
+        symbol: displaySymbol,
+        name: knownSymbol?.companyName ?? meta['shortName'] as String? ?? displaySymbol,
+        price: price,
+        changePercent: changePercent,
+        volume: volume,
+        apiSymbol: yahooSymbol,
+        previousClose: prevClose,
+        dayHigh: (meta['regularMarketDayHigh'] as num?)?.toDouble(),
+        dayLow: (meta['regularMarketDayLow'] as num?)?.toDouble(),
+      );
+    } catch (e) {
+      _logger.warning('v8/chart fallback failed for $symbol: $e');
+      return null;
+    }
   }
 
   /// Shortcut: Lấy thông tin 1 mã cổ phiếu duy nhất.
@@ -591,99 +646,117 @@ class YahooFinanceService {
   /// 3. Placeholder 0 → tránh crash UI khi cả 2 cách đều lỗi
   Future<List<MarketIndex>> fetchMarketIndices() async {
     // Cấu hình 2 chỉ số cần lấy
+    // chartSymbol: dùng cho v8/chart (URL-encoded, không có ^)
     final List<Map<String, String>> indexConfigs = <Map<String, String>>[
-      <String, String>{'symbol': '^VNINDEX', 'name': 'VN-Index'},
-      <String, String>{'symbol': '^HNXI', 'name': 'HNX'},
+      <String, String>{'symbol': '^VNINDEX', 'name': 'VN-Index', 'chartSymbol': '%5EVNINDEX'},
+      <String, String>{'symbol': '^HNXI', 'name': 'HNX', 'chartSymbol': '%5EHNXI'},
     ];
 
     final List<MarketIndex> results = <MarketIndex>[];
 
+    // Circuit breaker: bỏ qua v7 nếu đã fail nhiều lần gần đây
+    final bool skipV7 = _v7FailCount >= 2 &&
+        _v7LastFail != null &&
+        DateTime.now().difference(_v7LastFail!) < const Duration(minutes: 5);
+
     // Cách 1: v7/quote batch request cho tất cả chỉ số
-    try {
-      final String symbols = indexConfigs.map((Map<String, String> c) => c['symbol']!).join(',');
-
-      final Uri uri = Uri.parse(
-        'https://query1.finance.yahoo.com/v7/finance/quote'
-        '?symbols=$symbols'
-        '&fields=symbol,regularMarketPrice,regularMarketChangePercent,'
-        'regularMarketPreviousClose,regularMarketChange',
-      );
-
-      final http.Response response = await _authGet(uri);
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-        final List<dynamic>? quotes =
-            (data['quoteResponse'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
-
-        if (quotes != null && quotes.isNotEmpty) {
-          for (final Map<String, String> config in indexConfigs) {
-            // Tìm quote khớp symbol trong result list
-            final Map<String, dynamic>? q = _findQuoteBySymbol(quotes, config['symbol']!);
-
-            if (q != null) {
-              results.add(MarketIndex(
-                name: config['name']!,
-                value: (q['regularMarketPrice'] as num?)?.toDouble() ?? 0,
-                changePercent: (q['regularMarketChangePercent'] as num?)?.toDouble() ?? 0,
-                previousClose: (q['regularMarketPreviousClose'] as num?)?.toDouble(),
-                change: (q['regularMarketChange'] as num?)?.toDouble(),
-              ));
-            }
-          }
-
-          if (results.isNotEmpty) return results; // Thành công → trả về
-        }
-      }
-    } catch (e) {
-      _logger.warning('v7/quote for indices failed: $e');
-    }
-
-    // Cách 2: Gọi v8/chart riêng lẻ cho từng chỉ số
-    for (final Map<String, String> config in indexConfigs) {
+    if (!skipV7) {
       try {
+        final String symbols = indexConfigs.map((Map<String, String> c) => c['symbol']!).join(',');
+
         final Uri uri = Uri.parse(
-          'https://query1.finance.yahoo.com/v8/finance/chart/${config['symbol']}'
-          '?range=1d&interval=1d&includePrePost=false',
+          'https://query1.finance.yahoo.com/v7/finance/quote'
+          '?symbols=$symbols'
+          '&fields=symbol,regularMarketPrice,regularMarketChangePercent,'
+          'regularMarketPreviousClose,regularMarketChange',
         );
 
         final http.Response response = await _authGet(uri);
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-          final List<dynamic>? chartResults =
-              (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
+          final List<dynamic>? quotes =
+              (data['quoteResponse'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
 
-          if (chartResults != null && chartResults.isNotEmpty) {
-            final Map<String, dynamic> meta =
-                (chartResults.first as Map<String, dynamic>)['meta'] as Map<String, dynamic>;
-            final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
-            final double prevClose =
-                (meta['chartPreviousClose'] as num?)?.toDouble() ??
-                (meta['previousClose'] as num?)?.toDouble() ??
-                price;
-            final double changePct = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
+          if (quotes != null && quotes.isNotEmpty) {
+            for (final Map<String, String> config in indexConfigs) {
+              // Tìm quote khớp symbol trong result list
+              final Map<String, dynamic>? q = _findQuoteBySymbol(quotes, config['symbol']!);
 
-            results.add(MarketIndex(
-              name: config['name']!,
-              value: price,
-              changePercent: changePct,
-              previousClose: prevClose,
-              change: price - prevClose,
-            ));
-            continue; // Tiếp tục với chỉ số tiếp theo
+              if (q != null) {
+                results.add(MarketIndex(
+                  name: config['name']!,
+                  value: (q['regularMarketPrice'] as num?)?.toDouble() ?? 0,
+                  changePercent: (q['regularMarketChangePercent'] as num?)?.toDouble() ?? 0,
+                  previousClose: (q['regularMarketPreviousClose'] as num?)?.toDouble(),
+                  change: (q['regularMarketChange'] as num?)?.toDouble(),
+                ));
+              }
+            }
+
+            if (results.isNotEmpty) return results; // Thành công → trả về
           }
         }
       } catch (e) {
-        _logger.warning('v8/chart for index ${config['symbol']} failed: $e');
+        _logger.warning('v7/quote for indices failed: $e');
       }
+    }
 
-      // Cách 3: Thêm placeholder để UI không crash khi không lấy được data
-      results.add(MarketIndex(
-        name: config['name']!,
-        value: 0,
-        changePercent: 0,
-      ));
+    // Cách 2: Gọi v8/chart song song cho tất cả chỉ số
+    // Dùng Uri.parse đúng cách để tránh lỗi encoding ký tự ^
+    final List<MarketIndex?> chartResults = await Future.wait(
+      indexConfigs.map((Map<String, String> config) async {
+        try {
+          // Dùng URL đã encode sẵn: %5E thay cho ^
+          final Uri uri = Uri.parse(
+            'https://query1.finance.yahoo.com/v8/finance/chart/${config['chartSymbol']}'
+            '?range=1d&interval=1d&includePrePost=false',
+          );
+
+          final http.Response response = await _authGet(uri);
+
+          if (response.statusCode == 200) {
+            final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+            final List<dynamic>? results =
+                (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
+
+            if (results != null && results.isNotEmpty) {
+              final Map<String, dynamic> meta =
+                  (results.first as Map<String, dynamic>)['meta'] as Map<String, dynamic>;
+              final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
+              final double prevClose =
+                  (meta['chartPreviousClose'] as num?)?.toDouble() ??
+                  (meta['previousClose'] as num?)?.toDouble() ??
+                  price;
+              final double changePct = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
+
+              return MarketIndex(
+                name: config['name']!,
+                value: price,
+                changePercent: changePct,
+                previousClose: prevClose,
+                change: price - prevClose,
+              );
+            }
+          }
+        } catch (e) {
+          _logger.warning('v8/chart for index ${config['symbol']} failed: $e');
+        }
+        return null;
+      }),
+    );
+
+    // Gộp kết quả, dùng placeholder nếu chart cũng lỗi
+    for (int i = 0; i < indexConfigs.length; i++) {
+      if (chartResults[i] != null) {
+        results.add(chartResults[i]!);
+      } else {
+        results.add(MarketIndex(
+          name: indexConfigs[i]['name']!,
+          value: 0,
+          changePercent: 0,
+        ));
+      }
     }
 
     return results;

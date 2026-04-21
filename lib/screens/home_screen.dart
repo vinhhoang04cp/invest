@@ -147,40 +147,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Tải dữ liệu từ 3 nguồn API riêng biệt và gộp vào [_HomeScreenData].
   ///
-  /// Dùng try/catch riêng lẻ cho từng nguồn: nếu 1 API lỗi thì 2 cái kia
+  /// Chạy SONG SONG (Future.wait) để giảm thời gian tải tổng thể.
+  /// Mỗi nguồn có try/catch riêng: nếu 1 API lỗi thì 2 cái kia
   /// vẫn hiển thị bình thường (graceful degradation).
   Future<_HomeScreenData> _loadData(List<StockSymbolModel> trackedSymbols) async {
-    List<MarketIndex> indices = <MarketIndex>[];
-    List<Stock> watchlist = <Stock>[];
-    List<MarketNews> news = <MarketNews>[];
-
-    // Gọi song song hay tuần tự? Hiện tại tuần tự để tránh overload auth.
-    // Tối ưu: dùng Future.wait([f1, f2, f3]) để chạy song song.
-
-    try {
-      indices = await _apiService.fetchMarketIndices();
-    } catch (e) {
-      debugPrint('Failed to load indices: $e'); // Không crash app, chỉ log
-    }
-
-    try {
-      if (trackedSymbols.isNotEmpty) {
-        watchlist = await _apiService.fetchWatchlist(symbolModels: trackedSymbols);
-      }
-    } catch (e) {
-      debugPrint('Failed to load watchlist: $e');
-    }
-
-    try {
-      news = await _apiService.fetchMarketNews();
-    } catch (e) {
-      debugPrint('Failed to load news: $e');
-    }
+    // Chạy 3 API song song — thời gian tải = max(3 API) thay vì tổng(3 API)
+    final List<Object?> results = await Future.wait(<Future<Object?>>[
+      _apiService.fetchMarketIndices().catchError((Object e) {
+        debugPrint('Failed to load indices: $e');
+        return <MarketIndex>[];
+      }),
+      trackedSymbols.isNotEmpty
+          ? _apiService.fetchWatchlist(symbolModels: trackedSymbols).catchError((Object e) {
+              debugPrint('Failed to load watchlist: $e');
+              return <Stock>[];
+            })
+          : Future<List<Stock>>.value(<Stock>[]),
+      _apiService.fetchMarketNews().catchError((Object e) {
+        debugPrint('Failed to load news: $e');
+        return <MarketNews>[];
+      }),
+    ]);
 
     return _HomeScreenData(
-      indices: indices,
-      watchlist: watchlist,
-      news: news,
+      indices: results[0] as List<MarketIndex>? ?? <MarketIndex>[],
+      watchlist: results[1] as List<Stock>? ?? <Stock>[],
+      news: results[2] as List<MarketNews>? ?? <MarketNews>[],
       trackedSymbols: trackedSymbols,
     );
   }
