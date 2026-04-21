@@ -1,7 +1,7 @@
 import 'dart:async'; // Future, unawaited()
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'; // ChangeNotifier, debugPrint
-import 'package:shared_preferences/shared_preferences.dart'; // Persistent local storage
 
 import '../constants/stock_symbols.dart'; // Danh sách 30 mã mặc định
 import '../models/stock_symbol_model.dart'; // Model mã CK từ API
@@ -17,16 +17,16 @@ import '../services/yahoo_finance_service.dart'; // Gọi API
 //   - Gọi notifyListeners() → tất cả widget đang lắng nghe sẽ rebuild
 //   - Widget lắng nghe: Provider.of<WatchlistProvider>(context) hoặc Consumer<>
 //
-// LIFECYCLE:
-//   1. AppBootstrap tạo 1 instance WatchlistProvider
+// LIFECYCLE (với Firebase):
+//   1. AuthProvider phát hiện user đăng nhập → tạo WatchlistProvider(uid)
 //   2. Constructor gọi _initialize() không đồng bộ (unawaited)
-//   3. _initialize() load data từ SharedPreferences + Yahoo API
+//   3. _initialize() load data từ Firestore (users/{uid}) + Yahoo API
 //   4. isLoading = false → notifyListeners() → UI rebuild
-//   5. Các thao tác add/remove/reorder → lưu SharedPreferences → notifyListeners()
+//   5. Các thao tác add/remove/reorder → lưu Firestore → notifyListeners()
 //
 // PERSISTENT STORAGE:
-//   Chỉ lưu List<String> mã (["FPT", "VNM"]) vào SharedPreferences.
-//   Không lưu full model để tiết kiệm storage và tránh stale data.
+//   Lưu List<String> mã (["FPT", "VNM"]) vào Firestore document users/{uid}.
+//   Khi user đăng nhập trên thiết bị khác → watchlist vẫn còn.
 // =============================================================================
 
 /// Provider quản lý danh sách cổ phiếu theo dõi (Watchlist).
@@ -35,19 +35,24 @@ import '../services/yahoo_finance_service.dart'; // Gọi API
 /// Mọi widget gọi `Provider.of<WatchlistProvider>(context)` hoặc
 /// `Consumer<WatchlistProvider>` sẽ tự động rebuild khi provider thay đổi.
 class WatchlistProvider extends ChangeNotifier {
-  /// Constructor: Khởi động quá trình load dữ liệu nền.
+  /// Constructor: Nhận UID từ Firebase Auth và khởi động load dữ liệu.
   ///
-  /// `unawaited()`: constructor đồng bộ không thể `await`, dùng `unawaited()`
-  /// để chạy async function mà không block. Dart analyzer không cảnh báo
-  /// "discarded future" khi dùng unawaited().
-  WatchlistProvider() {
+  /// [uid]: Firebase Auth UID, dùng để đọc/ghi Firestore document `users/{uid}`.
+  /// Nếu uid null → guest mode (dùng defaults, không lưu).
+  WatchlistProvider({String? uid}) : _uid = uid {
     unawaited(_initialize());
   }
 
-  // Khóa lưu trong SharedPreferences
-  static const String _storageKey = 'watchlist_symbols';
+  // UID của người dùng hiện tại (null = guest mode)
+  final String? _uid;
+
+  /// UID của người dùng hiện tại (public getter để ProxyProvider so sánh).
+  String? get uid => _uid;
   // Số mã mặc định khi chưa có cấu hình người dùng
   static const int _defaultCount = 8;
+
+  /// Reference đến Firestore instance (singleton).
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   /// Danh sách mã cổ phiếu hiện đang theo dõi (chỉ lưu tên mã: "FPT", "VNM").
   final List<String> _symbols = <String>[];
@@ -68,7 +73,7 @@ class WatchlistProvider extends ChangeNotifier {
   // Public Getters
   // ===========================================================================
 
-  /// Trả về true khi Provider đang khởi tạo (load SharedPreferences + API).
+  /// Trả về true khi Provider đang khởi tạo (load Firestore + API).
   bool get isLoading => _isLoading;
 
   /// Danh sách TẤT CẢ mã CK có thể thêm vào watchlist (dùng trong tìm kiếm).
@@ -122,7 +127,7 @@ class WatchlistProvider extends ChangeNotifier {
   /// 1. Normalize thành UPPERCASE
   /// 2. Kiểm tra trùng → bỏ qua nếu đã có
   /// 3. Đảm bảo mã có trong lookup map
-  /// 4. Thêm vào list → lưu SharedPreferences → invalidate cache → notify UI
+  /// 4. Thêm vào list → lưu Firestore → invalidate cache → notify UI
   Future<void> addSymbol(String displaySymbol) async {
     final String code = displaySymbol.toUpperCase();
     if (_symbols.contains(code)) {
@@ -130,7 +135,7 @@ class WatchlistProvider extends ChangeNotifier {
     }
     _ensureSymbolInLookup(code); // Đảm bảo có thể lookup model
     _symbols.add(code);
-    await _save();
+    await _saveToFirestore();
     _invalidateCache();
     notifyListeners(); // Trigger rebuild tất cả widget lắng nghe
   }
@@ -140,7 +145,7 @@ class WatchlistProvider extends ChangeNotifier {
   /// [List.remove()] trả về true nếu xóa thành công → chỉ lưu/notify khi thực sự thay đổi.
   Future<void> removeSymbol(String displaySymbol) async {
     if (_symbols.remove(displaySymbol.toUpperCase())) {
-      await _save();
+      await _saveToFirestore();
       _invalidateCache();
       notifyListeners();
     }
@@ -151,18 +156,13 @@ class WatchlistProvider extends ChangeNotifier {
   /// Dart quirk của ReorderableListView:
   /// Khi kéo item xuống, `newIndex` là chỉ số SAU KHI item cũ vẫn còn đó.
   /// Phải trừ 1 để bù lại khi removeAt làm shift các index.
-  ///
-  /// Ví dụ: kéo index 0 xuống index 2
-  ///   Before: [A, B, C, D] → removeAt(0) → [B, C, D]
-  ///   newIndex nhận = 2, nhưng sau removeAt thật sự là vị trí 1
-  ///   → newIndex - 1 = 1 → insert(1, A) → [B, A, C, D] ✓
   Future<void> reorder(int oldIndex, int newIndex) async {
     if (oldIndex < newIndex) {
       newIndex -= 1; // Bù lại vì item đã bị remove trước insert
     }
     final String item = _symbols.removeAt(oldIndex); // Lấy ra khỏi list
     _symbols.insert(newIndex, item);                  // Chèn vào vị trí mới
-    await _save();
+    await _saveToFirestore();
     _invalidateCache();
     notifyListeners();
   }
@@ -173,7 +173,7 @@ class WatchlistProvider extends ChangeNotifier {
     _symbols
       ..clear()                                                                    // Xóa hết
       ..addAll(defaults.map((StockSymbolModel symbol) => symbol.displaySymbol)); // Thêm lại default
-    await _save();
+    await _saveToFirestore();
     _invalidateCache();
     notifyListeners();
   }
@@ -228,14 +228,28 @@ class WatchlistProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // _initialize() — Khởi tạo provider: load từ storage + API
+  // _initialize() — Khởi tạo provider: load từ Firestore + API
   // ---------------------------------------------------------------------------
 
   Future<void> _initialize() async {
     try {
-      // Bước 1: Load watchlist đã lưu từ bộ nhớ máy
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final List<String>? stored = prefs.getStringList(_storageKey);
+      // Bước 1: Load watchlist đã lưu từ Firestore (nếu có UID)
+      List<String>? stored;
+      if (_uid != null) {
+        try {
+          final DocumentSnapshot<Map<String, dynamic>> doc =
+              await _firestore.collection('users').doc(_uid).get();
+          if (doc.exists && doc.data() != null) {
+            final List<dynamic>? watchlistData =
+                doc.data()!['watchlist'] as List<dynamic>?;
+            if (watchlistData != null && watchlistData.isNotEmpty) {
+              stored = watchlistData.cast<String>();
+            }
+          }
+        } catch (e) {
+          debugPrint('Failed to load watchlist from Firestore: $e');
+        }
+      }
 
       // Bước 2: Tải kho tổng từ Yahoo (với fallback về hardcoded list)
       try {
@@ -253,7 +267,6 @@ class WatchlistProvider extends ChangeNotifier {
       }
 
       // Bước 3: Xây dựng lookup map để tra nhanh O(1)
-      // Cú pháp: { for (item in list) key: value } = collection for trong Map literal
       _symbolLookup = <String, StockSymbolModel>{
         for (final StockSymbolModel symbol in _allSymbols)
           symbol.displaySymbol.toUpperCase(): symbol,
@@ -271,6 +284,10 @@ class WatchlistProvider extends ChangeNotifier {
         _symbols
           ..clear()
           ..addAll(defaults.map((StockSymbolModel symbol) => symbol.displaySymbol));
+        // Lưu defaults lên Firestore cho user mới
+        if (_uid != null) {
+          unawaited(_saveToFirestore());
+        }
       }
 
       // Đảm bảo tất cả mã đang theo dõi đều có trong lookup
@@ -336,15 +353,25 @@ class WatchlistProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // _save() — Lưu watchlist vào SharedPreferences
+  // _saveToFirestore() — Lưu watchlist lên Firestore
   // ---------------------------------------------------------------------------
 
-  /// Lưu danh sách mã hiện tại vào bộ nhớ persistent của thiết bị.
+  /// Lưu danh sách mã hiện tại lên Firestore document users/{uid}.
   ///
-  /// SharedPreferences.setStringList: lưu ['FPT', 'VNM', 'VCB'] → persist qua restart app.
-  Future<void> _save() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    // Tạo copy List (không lưu reference trực tiếp → an toàn với concurrent modification)
-    await prefs.setStringList(_storageKey, List<String>.from(_symbols));
+  /// Nếu uid null (guest mode) → bỏ qua, không lưu.
+  /// merge: true → chỉ cập nhật field 'watchlist', không xóa các field khác.
+  Future<void> _saveToFirestore() async {
+    if (_uid == null) return; // Guest mode → không lưu
+
+    try {
+      await _firestore.collection('users').doc(_uid).set(
+        <String, dynamic>{
+          'watchlist': List<String>.from(_symbols),
+        },
+        SetOptions(merge: true), // merge: true = chỉ update field watchlist
+      );
+    } catch (e) {
+      debugPrint('WatchlistProvider save error: $e');
+    }
   }
 }

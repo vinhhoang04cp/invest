@@ -7,20 +7,18 @@ import '../models/user.dart';
 // =============================================================================
 //
 // Nhận dữ liệu từ navigation arguments (UserProfile từ SettingsScreen).
-// Khi Lưu → pop với UserProfile đã cập nhật → SettingsScreen nhận và cập nhật.
+// Khi Lưu → pop với UserProfile đã cập nhật → SettingsScreen nhận và lưu Firestore.
 //
 // PATTERN: Form validation với GlobalKey<FormState>
 //   _formKey.currentState!.validate() → chạy tất cả validator của TextFormField
 //   → Nếu tất cả pass → true; có field fail → false (và hiện error message)
-//
-// LƯU Ý: Màn hình này chỉ CHỈNH SỬA thông tin trong bộ nhớ.
-// Chưa có tích hợp backend (auth, storage) thật sự.
 // =============================================================================
 
 /// Màn hình chỉnh sửa hồ sơ cá nhân.
 ///
 /// Nhận [UserProfile] qua navigation arguments.
 /// Khi lưu thành công → `Navigator.pop(updatedProfile)` trả về profile mới.
+/// SettingsScreen nhận và ghi lên Firestore.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -32,7 +30,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   /// Key để truy cập Form state và trigger validation.
-  /// GlobalKey<FormState>: typed key đảm bảo type-safe khi gọi validate()/save()
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   // Controllers cho từng TextField (phải dispose khi xong)
@@ -41,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _phoneController;
 
   late UserProfile _profile;           // Profile gốc nhận từ args
-  bool _notifications = false;         // State riêng cho Switch (không dùng TextEditingController)
+  bool _notifications = false;         // State riêng cho Switch
   bool _initialized = false;           // Cờ tránh init lại nhiều lần
 
   // ---------------------------------------------------------------------------
@@ -69,7 +66,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     // BẮTT BUỘC: dispose tất cả TextEditingController
-    // Mỗi controller có Timer và listener references → leak nếu không dispose
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -81,22 +77,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ---------------------------------------------------------------------------
 
   /// Validate form và pop với UserProfile đã cập nhật nếu hợp lệ.
-  ///
-  /// Form.validate() chạy tất cả validator functions của TextFormField con.
-  /// Nếu pass hết → pop với updated profile → SettingsScreen nhận.
   void _saveProfile() {
-    // validate() trả về false nếu có field nào fail → hiển thị error dưới field
     if (!_formKey.currentState!.validate()) return;
 
-    // copyWith: immutable update — tạo object mới với chỉ các field được chỉ định thay đổi
+    // copyWith: immutable update — tạo object mới với chỉ các field được thay đổi
     final UserProfile updated = _profile.copyWith(
-      fullName: _nameController.text.trim(),       // trim() xóa khoảng trắng thừa
+      fullName: _nameController.text.trim(),
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
       receiveNotifications: _notifications,
     );
 
-    // pop(result): đóng màn hình và trả về result cho await ở SettingsScreen
+    // pop(result): đóng màn hình và trả về result cho SettingsScreen
+    // SettingsScreen sẽ gọi _updateProfile() → lưu lên Firestore
     Navigator.of(context).pop(updated);
   }
 
@@ -118,43 +111,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        // Form widget: bọc các TextFormField để quản lý validation chung
         child: Form(
-          key: _formKey, // Link Form với GlobalKey để gọi validate() từ ngoài
+          key: _formKey,
           child: ListView(
             children: <Widget>[
               // ── Họ tên ──────────────────────────────────
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Họ và tên'),
-                // validator: function chạy khi Form.validate() được gọi
-                // Trả về String (error message) nếu không hợp lệ, null nếu OK
                 validator: (String? value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập họ tên'; // Hiển thị dưới field
+                    return 'Vui lòng nhập họ tên';
                   }
-                  return null; // null = hợp lệ
+                  return null;
                 },
               ),
               const SizedBox(height: 16),
 
-              // ── Email ────────────────────────────────────
+              // ── Email (chỉ đọc — email từ Firebase Auth) ──
               TextFormField(
                 controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress, // Bàn phím ưu tiên @ ký tự
-                validator: (String? value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập email';
-                  }
-                  // RegExp: validate format email đơn giản (xxx@xxx.xxx)
-                  // `r'...'`: raw string, \ không bị escape → dùng cho regex
-                  final bool isValid = RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value.trim());
-                  if (!isValid) {
-                    return 'Email không hợp lệ';
-                  }
-                  return null;
-                },
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  helperText: 'Email không thể thay đổi (liên kết với tài khoản)',
+                ),
+                readOnly: true, // Email đăng ký không cho sửa
+                enabled: false,
               ),
               const SizedBox(height: 16),
 
@@ -162,12 +144,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'Số điện thoại'),
-                keyboardType: TextInputType.phone, // Bàn phím số điện thoại
+                keyboardType: TextInputType.phone,
                 validator: (String? value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập số điện thoại';
-                  }
-                  return null; // TODO: Thêm validate format số điện thoại VN
+                  // Phone là tùy chọn, không bắt buộc
+                  return null;
                 },
               ),
               const SizedBox(height: 24),
@@ -178,15 +158,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: _notifications,
                 onChanged: (bool value) {
                   setState(() {
-                    _notifications = value; // Local state → rebuild Switch
+                    _notifications = value;
                   });
                 },
               ),
-              const SizedBox(height: 24),
-
-              // Ghi chú TODO cho developer
-              const Text(
-                  'TODO(thanhvien5): Bổ sung thay đổi mật khẩu, ảnh đại diện, liên kết tài khoản...'),
             ],
           ),
         ),
