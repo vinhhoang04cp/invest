@@ -1,110 +1,115 @@
-# Stock Vision - Ứng dụng Theo dõi Chứng khoán Việt Nam (Flutter)
+# Stock Vision - Ứng dụng Theo dõi Chứng khoán Việt Nam
 
 ## 1. Giới thiệu dự án
-**Stock Vision** là một ứng dụng di động được phát triển bằng Flutter, cho phép người dùng theo dõi biến động thị trường chứng khoán Việt Nam theo thời gian thực sử dụng API của **Yahoo Finance**. Ứng dụng cung cấp các công cụ quản lý danh mục đầu tư (Portfolio), danh sách theo dõi (Watchlist) và cập nhật tin tức tài chính.
+**Stock Vision** là một ứng dụng di động đa nền tảng được phát triển bằng Flutter, cho phép người dùng theo dõi diễn biến thị trường chứng khoán Việt Nam theo thời gian thực. Ứng dụng cung cấp các công cụ cập nhật biến động giá cổ phiếu, quản lý danh mục đầu tư (Portfolio), danh sách theo dõi (Watchlist) và xem các biểu đồ phân tích kỹ thuật.
+Dự án sử dụng dữ liệu trực tiếp từ **Yahoo Finance API** kết hợp với **Firebase** để xác thực người dùng và lưu trữ dữ liệu cá nhân hóa trên cloud.
 
-- **Nhà phát triển**: 1 người (Cá nhân)
-- **Mục tiêu**: Xây dựng một ứng dụng theo dõi tài chính chuyên nghiệp, không phụ thuộc vào các API mất phí, có hiệu năng cao và trải nghiệm người dùng tối ưu.
+## 2. Những công việc đã thực hiện
 
-## 2. Tính năng chính
-- **Tổng quan thị trường**: Theo dõi các chỉ số và biến động cổ phiếu theo thời gian thực mạnh mẽ thông qua Yahoo Finance API.
-- **Quản lý Watchlist**: Tùy chỉnh danh sách các mã cổ phiếu quan tâm (Thêm/Xóa/Sắp xếp).
-- **Chi tiết cổ phiếu**: Biểu đồ giá trực quan, các thông số kỹ thuật và biểu đồ đường xu hướng.
-- **Danh mục đầu tư (Portfolio)**: Quản lý tài sản, tính toán lãi/lỗ dựa trên giá thị trường hiện tại.
-- **Dữ liệu mượt mà**: Tự động quản lý Cookies & Crumbs của Yahoo Finance để lấy thông tin chính xác, nhanh chóng.
+Trong quá trình phát triển dự án, các tính năng và module chính sau đây đã được hoàn thiện:
 
-## 3. Cấu trúc thư mục chi tiết (Folder Structure)
+*   **Xây dựng Giao diện người dùng (UI/UX):**
+    *   Phát triển hệ thống các màn hình hoàn chỉnh: Home (Tổng quan), Stock Detail (Chi tiết cổ phiếu với biểu đồ), Watchlist (Danh sách theo dõi), Portfolio (Danh mục đầu tư), Profile/Settings và các màn hình xác thực (Login/Register).
+    *   Tạo các Widgets có thể tái sử dụng cao như `MiniSparkline` để vẽ nhanh xu hướng giá, `StockLineChart` sử dụng `fl_chart` để hiển thị biểu đồ chi tiết.
+*   **Tích hợp Dữ liệu Thời gian thực (Yahoo Finance API):**
+    *   Viết service xử lý lấy thông tin chứng khoán (Quote, Chart, News).
+    *   Xây dựng cơ chế tự động giả lập Web Session để lấy Cookies và Crumbs từ Yahoo, đảm bảo việc gọi API không bị gián đoạn hay bị chặn.
+*   **Hệ thống Xác thực & Lưu trữ (Firebase Integration):**
+    *   Tích hợp **Firebase Authentication** cho phép người dùng đăng ký và đăng nhập bảo mật bằng Email/Mật khẩu.
+    *   Tích hợp **Cloud Firestore** để khởi tạo document chứa thông tin người dùng ngay khi đăng ký thành công (Lưu trữ Cài đặt cá nhân, Watchlist,... trên Cloud).
+*   **Quản lý Trạng thái (State Management):**
+    *   Thiết lập luồng dữ liệu một chiều sử dụng `Provider` (`AuthProvider` cho xác thực, `WatchlistProvider` cho quản lý danh mục mã quan tâm).
+*   **Tối ưu hoá & Tiện ích:**
+    *   Sử dụng `shared_preferences` để lưu tạm các cấu hình cục bộ.
+    *   Tích hợp hệ thống ghi log chuyên nghiệp với `talker_flutter` giúp bắt lỗi dữ liệu dễ dàng trong quá trình phát triển.
+    *   Tạo Helper classes (ví dụ: `Debouncer` để tối ưu thanh tìm kiếm mã cổ phiếu).
 
-Dự án được tổ chức theo kiến trúc phân lớp rõ ràng để dễ dàng bảo trì và mở rộng:
+## 3. Cấu trúc Project (Folder Structure)
+
+Dự án được tổ chức theo mô hình phân lớp rõ ràng bên trong thư mục `lib/` nhằm tối ưu hóa việc bảo trì và mở rộng code:
 
 ```text
 lib/
- ├── main.dart                  # Điểm khởi đầu của ứng dụng, cấu hình Theme và Router.
- ├── constants/                 # Chứa các giá trị cố định, cấu hình tĩnh.
- │    └── stock_symbols.dart    # Định nghĩa danh sách các mã chứng khoán mặc định và mapping.
- ├── models/                    # Lớp dữ liệu (Data Layer) - Định nghĩa các đối tượng.
- │    ├── stock.dart            # Thông tin về một mã cổ phiếu (giá, thay đổi, ...).
- │    ├── stock_symbol_model.dart # Cấu trúc dữ liệu cho danh mục mã.
- │    ├── market_index.dart     # Dữ liệu các chỉ số thị trường.
- │    ├── market_news.dart      # Cấu trúc dữ liệu bài báo, tin tức.
- │    ├── portfolio.dart        # Dữ liệu tài sản trong danh mục đầu tư.
- │    └── user.dart             # Thông tin cá nhân người dùng.
- ├── screens/                   # Giao diện người dùng (Presentation Layer) - Từng màn hình cụ thể.
- │    ├── home_screen.dart      # Màn hình chính (Dashboard).
- │    ├── stock_list_screen.dart # Danh sách thị trường và tìm kiếm mã.
- │    ├── stock_detail_screen.dart # Chi tiết về một mã chứng khoán cụ thể.
- │    ├── portfolio_screen.dart  # Quản lý tài sản cá nhân.
- │    └── ...                   # Các màn hình chức năng khác.
- ├── services/                  # Xử lý Logic và Dữ liệu ngoại vi (Service Layer).
- │    ├── yahoo_finance_service.dart # Giao tiếp với Yahoo Finance, lấy lịch sử giá, cookie/crumbs...
- │    └── logger_service.dart   # Dịch vụ ghi log cho hệ thống (Talker).
- ├── state/                     # Quản lý trạng thái ứng dụng (State Management).
- │    └── watchlist_provider.dart # Quản lý và đồng bộ Watchlist toàn app.
- ├── widgets/                   # Các thành phần giao diện dùng chung (Re-usable Widgets).
- │    ├── mini_sparkline.dart   # Biểu đồ đường nhỏ hiển thị xu hướng giá.
- │    └── section_header.dart   # Tiêu đề cho các phần trong trang.
- └── utils/                     # Các hàm tiện ích (Helper functions).
-      └── formatters.dart       # Định dạng tiền tệ, ngày tháng, số liệu.
+ ├── main.dart                  # Entry point, khởi tạo Firebase, cấu hình Theme & MultiProvider
+ ├── firebase_options.dart      # File cấu hình kết nối Firebase (tạo tự động bằng FlutterFire CLI)
+ │
+ ├── constants/                 # Chứa cấu hình tĩnh
+ │    └── stock_symbols.dart    # Danh sách các mã cổ phiếu VN mặc định
+ │
+ ├── models/                    # Data Layer - Các lớp mô hình hoá JSON data
+ │    ├── market_index.dart     # Model chỉ số thị trường (VN-INDEX, HNX...)
+ │    ├── market_news.dart      # Model bản tin tài chính
+ │    ├── portfolio.dart        # Model danh mục đầu tư
+ │    ├── stock.dart            # Model đối tượng cổ phiếu chi tiết
+ │    ├── stock_symbol_model.dart
+ │    └── user.dart             # Model thông tin người dùng ứng dụng
+ │
+ ├── screens/                   # Presentation Layer - Giao diện từng trang
+ │    ├── auth/                 # Nhóm màn hình Xác thực
+ │    │    ├── login_screen.dart
+ │    │    └── register_screen.dart
+ │    ├── home_screen.dart      # Trang chủ (Overview/News)
+ │    ├── portfolio_screen.dart # Trang Danh mục đầu tư
+ │    ├── profile_screen.dart   # Trang Thông tin cá nhân
+ │    ├── settings_screen.dart  # Trang Cài đặt ứng dụng
+ │    ├── stock_detail_screen.dart # Trang Chi tiết (Biểu đồ lớn)
+ │    ├── stock_list_screen.dart   # Danh sách và Tìm kiếm chứng khoán
+ │    └── watchlist_manage_screen.dart # Quản lý danh mục theo dõi
+ │
+ ├── services/                  # Business Logic Layer - Giao tiếp với External API
+ │    ├── logger_service.dart   # Service quản lý log (Talker)
+ │    └── yahoo_finance_service.dart # Service gọi API Yahoo (Fetch Cookie, Crumb, Quote)
+ │
+ ├── state/                     # State Management - Quản lý trạng thái
+ │    ├── auth_provider.dart    # Xử lý Logic Login/Logout và kết nối Firestore users
+ │    └── watchlist_provider.dart # Theo dõi và đồng bộ Watchlist
+ │
+ ├── utils/                     # Utility functions (Hàm tiện ích)
+ │    └── debouncer.dart        # Chống gọi hàm liên tục (tốt cho search)
+ │
+ └── widgets/                   # Reusable Components (Thành phần UI dùng chung)
+      ├── mini_sparkline.dart   # Biểu đồ xu hướng nhỏ gọn
+      ├── section_header.dart   # Header dùng chung
+      └── stock_line_chart.dart # Biểu đồ lớn từ thư viện fl_chart
 ```
 
-## 4. Giải thích cụ thể các thành phần
+## 4. Các Công nghệ sử dụng (Tech Stack)
 
-### **Models (Dữ liệu)**
-Đây là nơi định nghĩa các Class để chuyển đổi dữ liệu từ API (JSON) sang đối tượng Dart. Việc tách riêng Model giúp ứng dụng kiểm soát dữ liệu chặt chẽ và tận dụng tính năng Type-safety của Dart.
+Dự án áp dụng các framework, thư viện và service hiện đại:
 
-### **Services (Dịch vụ)**
-Logic lấy thông tin được chuyển lên class cung cấp thống nhất:
-- `YahooFinanceService`: Đóng gói các phương thức nhận diện cookie, crumb từ Yahoo Finance. Xử lý HTTP requests trực tiếp đến các endpoint của Yahoo (ví dụ: `v8/finance/chart`, `v7/finance/quote`,...) để lấy thiết lập giá realtime hoặc dữ liệu biểu đồ.
-- `LoggerService`: Giúp theo dõi debug, sự cố với Talker trong việc xử lý Data.
+*   **Core Framework**:
+    *   [Flutter](https://flutter.dev/) (Phiên bản SDK `^3.11.4`) - Xây dựng giao diện ứng dụng.
+    *   Ngôn ngữ lập trình: **Dart**.
+*   **Backend & BaaS (Backend as a Service)**:
+    *   **Firebase Core** (`firebase_core`): Nền tảng kết nối.
+    *   **Firebase Authentication** (`firebase_auth`): Quản lý định danh người dùng.
+    *   **Cloud Firestore** (`cloud_firestore`): NoSQL Database lưu trữ thông tin User và Watchlist trên đám mây.
+*   **Quản lý Trạng thái (State Management)**:
+    *   [`provider`](https://pub.dev/packages/provider): Giải pháp state management chính, lắng nghe (listen) và cập nhật UI hiệu quả.
+*   **Giao tiếp Mạng & API (Networking)**:
+    *   [`http`](https://pub.dev/packages/http): Thư viện gửi REST requests lấy dữ liệu từ Yahoo Finance.
+*   **Giao diện & Biểu đồ (UI & Charts)**:
+    *   [`fl_chart`](https://pub.dev/packages/fl_chart): Thư viện vẽ biểu đồ đường (Line chart) mạnh mẽ để hiển thị biến động giá.
+    *   [`cupertino_icons`](https://pub.dev/packages/cupertino_icons): Bộ icon chuẩn của Apple.
+*   **Tiện ích & Lưu trữ cục bộ (Utils & Local Storage)**:
+    *   [`shared_preferences`](https://pub.dev/packages/shared_preferences): Lưu trữ cục bộ dữ liệu nhẹ (local cache).
+    *   [`talker_flutter`](https://pub.dev/packages/talker_flutter): Công cụ logging và debug mạnh mẽ, giúp theo dõi lỗi HTTP requests dễ dàng.
+    *   [`url_launcher`](https://pub.dev/packages/url_launcher): Mở các liên kết bên ngoài (như bài viết tin tức) bằng trình duyệt web của thiết bị.
 
-### **State Management (Quản lý trạng thái)**
-Sử dụng **Provider**. Đây là lựa chọn tối ưu cho dự án vì tính đơn giản và hiệu quả. Các provider thực hiện lắng nghe và thông báo cho toàn bộ màn hình liên quan khi cần cập nhật dữ liệu.
+## 5. Hướng dẫn cài đặt & Chạy ứng dụng
 
-### **Screens & Widgets**
-- Các UI Components tái sử dụng linh hoạt như `MiniSparkline` cùng với `fl_chart` mang đến giao diện trực quan và thân thiện.
-
-## 5. Luồng hoạt động của ứng dụng (Data Flow)
-
-Để giúp bạn dễ dàng nắm bắt logic code, đây là luồng hoạt động chính:
-
-1. **Khởi động App (`main.dart`)**:
-   - `WidgetsFlutterBinding.ensureInitialized()` được gọi để chuẩn bị môi trường.
-   - Khởi tạo thư viện `Talker` (thông qua `LoggerService`) để ghi chép log.
-   - Bọc toàn bộ ứng dụng (`AppBootstrap`) bằng `ChangeNotifierProvider<WatchlistProvider>`. Điều này giúp danh sách theo dõi chứng khoán khả dụng ở mọi màn hình.
-
-2. **Quản lý State Toàn cục (`WatchlistProvider`)**:
-   - Ngay từ khi được khởi tạo, provider sẽ đọc dữ liệu từ `SharedPreferences` để biết người dùng đang theo dõi mã nào.
-   - Đồng thời, provider gọi đến `YahooFinanceService` để lấy danh sách mã toàn thị trường từ Yahoo (cache lại nếu có) để phục vụ cho tính năng tìm kiếm.
-
-3. **Giao tiếp Dữ liệu (`YahooFinanceService`)**:
-   - Khi bất kỳ màn hình nào cần lấy Giá hiện tại, Biểu đồ lịch sử, hoặc Thông tin cổ phiếu, nó sẽ gọi các hàm trong `YahooFinanceService`.
-   - Lớp này sử dụng `_YahooAuthManager` tự động gọi một session request ẩn đến máy chủ Yahoo để chộp lấy (fetch) một Cookies và Crumb hợp lệ (đây là cách cấp quyền ngầm của Yahoo Finance).
-   - Sau đó kèm Cookie & Crumb đó vào request (ví dụ: `v8/finance/chart/FPT.VN`) để lấy chuỗi JSON trả về. Cuối cùng parse JSON thành Model (như `Stock`, `MarketIndex`).
-
-4. **Hiển thị Dữ liệu (Ví dụ `HomeScreen`)**:
-   - Màn hình chính sử dụng `FutureBuilder` để tải đồng thời nhiều phần (Chỉ số TT, Tin tức, Danh mục Watchlist).
-   - Provider lắng nghe và báo với `HomeScreen` mỗi khi danh sách Watchlist bị đổi đi (Thêm, Xóa), sau đó `HomeScreen` sẽ re-fetch giá cho các mã đó.
-   - Component con `MiniSparkline` độc lập gọi API riêng lẻ để lấy biểu đồ thu nhỏ (sparkline) trong 7 ngày, với cache tránh gọi trùng lặp.
-
-## 6. Công nghệ sử dụng
-- **Framework**: Flutter (v3.x)
-- **State Management**: Provider
-- **Local Storage**: SharedPreferences (Lưu watchlist và cấu hình cục bộ)
-- **Networking**: Http (Xử lý giao tiếp Data linh hoạt & Headers)
-- **Log Management**: Talker
-- **Charts**: fl_chart / CustomPaint (Cho sparkline)
-
-## 7. Hướng dẫn cài đặt
-
-1. **Clone dự án và cài đặt thư viện**:
+1. **Clone dự án**:
+   ```bash
+   git clone <đường_dẫn_git_của_bạn>
+   cd chungkhoan
+   ```
+2. **Cài đặt các gói phụ thuộc (Dependencies)**:
    ```bash
    flutter pub get
    ```
-
-2. **Chạy ứng dụng**:
-   Nhấn chạy ứng dụng bằng lệnh:
+3. **Cấu hình Firebase (Nếu cần thiết)**:
+   *   Đảm bảo bạn đã có các file `.firebaserc`, `firebase.json` và đã cấu hình Firebase trên máy hoặc liên kết bằng CLI `flutterfire configure`.
+4. **Chạy ứng dụng**:
    ```bash
    flutter run
    ```
-
----
