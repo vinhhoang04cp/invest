@@ -126,27 +126,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // ── Thông tin user đăng nhập ────────────────
               Consumer<AuthProvider>(
                 builder: (BuildContext context, AuthProvider auth, _) {
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      child: Text(
-                        (profile.fullName.isNotEmpty
-                                ? profile.fullName[0]
-                                : auth.user?.email?[0] ?? '?')
-                            .toUpperCase(),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
+                  return Container(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 35,
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          child: Text(
+                            (profile.fullName.isNotEmpty
+                                    ? profile.fullName[0]
+                                    : auth.user?.email?[0] ?? '?')
+                                .toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 24,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                profile.fullName.isNotEmpty ? profile.fullName : 'Người dùng',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                auth.user?.email ?? '',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.grey,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    title: Text(
-                      profile.fullName.isNotEmpty
-                          ? profile.fullName
-                          : 'Người dùng',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(auth.user?.email ?? ''),
                   );
                 },
               ),

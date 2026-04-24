@@ -42,9 +42,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Khởi tạo Firebase — BẮT BUỘC gọi trước khi dùng bất kỳ service Firebase nào
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   runApp(
     // TalkerWrapper = wrapper cho toàn bộ app để intercept và log lỗi toàn cục.
