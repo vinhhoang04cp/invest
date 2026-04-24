@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/portfolio.dart';
 import '../state/watchlist_provider.dart';
-import '../state/portfolio_provider.dart';
 import '../services/yahoo_finance_service.dart';
 
 class PortfolioEntryForm extends StatefulWidget {

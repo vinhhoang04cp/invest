@@ -38,10 +38,12 @@ class _YahooAuthManager {
   final http.Client _client;
   final LoggerService _logger;
 
-  String? _crumb;      // Mã crumb ngắn (vd: "abc123xYz") — dùng như CSRF token
-  String? _cookie;     // Cookie session từ Yahoo (vd: "A=...; B=...")
-  DateTime? _lastAuth; // Thời điểm xác thực thành công gần nhất (dùng kiểm tra TTL)
-  int _failCount = 0;  // Đếm số lần xác thực thất bại liên tiếp (tránh retry vô hạn)
+  String? _crumb; // Mã crumb ngắn (vd: "abc123xYz") — dùng như CSRF token
+  String? _cookie; // Cookie session từ Yahoo (vd: "A=...; B=...")
+  DateTime?
+  _lastAuth; // Thời điểm xác thực thành công gần nhất (dùng kiểm tra TTL)
+  int _failCount =
+      0; // Đếm số lần xác thực thất bại liên tiếp (tránh retry vô hạn)
   bool _isAuthenticating = false; // Mutex ngăn auth chạy đồng thời
 
   // TTL: cookie/crumb chỉ dùng được trong 20 phút, sau đó cần xin lại
@@ -75,7 +77,9 @@ class _YahooAuthManager {
       // Cooldown: chỉ thử lại sau 60 giây kể từ lần auth cuối
       if (_lastAuth != null &&
           DateTime.now().difference(_lastAuth!) < const Duration(seconds: 60)) {
-        _logger.warning('Yahoo Auth: Thất bại quá nhiều lần, bỏ qua bước xác thực');
+        _logger.warning(
+          'Yahoo Auth: Thất bại quá nhiều lần, bỏ qua bước xác thực',
+        );
         return;
       }
     }
@@ -122,7 +126,9 @@ class _YahooAuthManager {
   /// Lý do: Yahoo yêu cầu crumb như một phần của URL để xác minh session.
   Uri withCrumb(Uri uri) {
     if (_crumb == null) return uri; // Không có crumb → giữ nguyên URI
-    final Map<String, dynamic> params = Map<String, dynamic>.from(uri.queryParameters);
+    final Map<String, dynamic> params = Map<String, dynamic>.from(
+      uri.queryParameters,
+    );
     params['crumb'] = _crumb!;
     return uri.replace(queryParameters: params);
   }
@@ -149,8 +155,9 @@ class _YahooAuthManager {
 
       String? cookie = _extractCookies(cookieResponse);
       _logger.debug(
-          'Yahoo Auth: fc.yahoo.com status=${cookieResponse.statusCode}, '
-          'cookie=${cookie != null ? "present" : "null"}');
+        'Yahoo Auth: fc.yahoo.com status=${cookieResponse.statusCode}, '
+        'cookie=${cookie != null ? "present" : "null"}',
+      );
 
       // Bước 1b: Nếu fc.yahoo.com không trả cookie → thử trang login Yahoo
       if (cookie == null || cookie.isEmpty) {
@@ -160,8 +167,9 @@ class _YahooAuthManager {
         );
         cookie = _extractCookies(consentResponse);
         _logger.debug(
-            'Yahoo Auth: login.yahoo.com status=${consentResponse.statusCode}, '
-            'cookie=${cookie != null ? "present" : "null"}');
+          'Yahoo Auth: login.yahoo.com status=${consentResponse.statusCode}, '
+          'cookie=${cookie != null ? "present" : "null"}',
+        );
       }
 
       if (cookie != null && cookie.isNotEmpty) {
@@ -176,19 +184,22 @@ class _YahooAuthManager {
         );
 
         _logger.debug(
-            'Yahoo Auth: getcrumb status=${crumbResponse.statusCode}, '
-            'body=${crumbResponse.body.length > 50 ? crumbResponse.body.substring(0, 50) : crumbResponse.body}');
+          'Yahoo Auth: getcrumb status=${crumbResponse.statusCode}, '
+          'body=${crumbResponse.body.length > 50 ? crumbResponse.body.substring(0, 50) : crumbResponse.body}',
+        );
 
         // Thành công: response là plaintext crumb (không phải HTML/JSON)
         if (crumbResponse.statusCode == 200 &&
             crumbResponse.body.isNotEmpty &&
-            !crumbResponse.body.contains('<')) { // '<' = dấu hiệu trả về HTML lỗi
+            !crumbResponse.body.contains('<')) {
+          // '<' = dấu hiệu trả về HTML lỗi
           _crumb = crumbResponse.body.trim();
           _lastAuth = DateTime.now();
           _failCount = 0; // Reset bộ đếm fail
           _logger.info(
-              'Yahoo Auth: ✅ Authenticated '
-              '(crumb=${_crumb!.substring(0, min(6, _crumb!.length))}...)');
+            'Yahoo Auth: ✅ Authenticated '
+            '(crumb=${_crumb!.substring(0, min(6, _crumb!.length))}...)',
+          );
           return; // Thành công → thoát
         }
       }
@@ -196,7 +207,9 @@ class _YahooAuthManager {
       // ══════════════════════════════════════════════
       // CÁCH 2: Scrape crumb từ HTML trang Yahoo Finance
       // ══════════════════════════════════════════════
-      _logger.info('Yahoo Auth: Cách 1 thất bại, chuyển sang phương án bóc dữ liệu HTML...');
+      _logger.info(
+        'Yahoo Auth: Cách 1 thất bại, chuyển sang phương án bóc dữ liệu HTML...',
+      );
       final http.Response pageResponse = await _client.get(
         Uri.parse('https://finance.yahoo.com/quote/%5EGSPC/'),
         headers: <String, String>{'User-Agent': _userAgent},
@@ -222,8 +235,9 @@ class _YahooAuthManager {
 
         // Pattern 2: Tìm kiểu CrumbStore cũ (Yahoo cũ dùng pattern này)
         if (extractedCrumb == null) {
-          final RegExp crumbStorePattern =
-              RegExp(r'"CrumbStore"\s*:\s*\{"crumb"\s*:\s*"([^"]+)"\}');
+          final RegExp crumbStorePattern = RegExp(
+            r'"CrumbStore"\s*:\s*\{"crumb"\s*:\s*"([^"]+)"\}',
+          );
           final Match? storeMatch = crumbStorePattern.firstMatch(body);
           if (storeMatch != null) {
             extractedCrumb = storeMatch.group(1);
@@ -236,8 +250,9 @@ class _YahooAuthManager {
           _lastAuth = DateTime.now();
           _failCount = 0;
           _logger.info(
-              'Yahoo Auth: ✅ Authenticated via HTML '
-              '(crumb=${_crumb!.substring(0, min(6, _crumb!.length))}...)');
+            'Yahoo Auth: ✅ Authenticated via HTML '
+            '(crumb=${_crumb!.substring(0, min(6, _crumb!.length))}...)',
+          );
           return;
         }
       }
@@ -249,12 +264,17 @@ class _YahooAuthManager {
       _failCount++;
       _lastAuth = DateTime.now(); // Lưu timestamp để tránh retry quá nhanh
       _logger.warning(
-          'Yahoo Auth: ⚠️ Could not obtain crumb (fail #$_failCount). '
-          'Will try requests without crumb.');
+        'Yahoo Auth: ⚠️ Could not obtain crumb (fail #$_failCount). '
+        'Will try requests without crumb.',
+      );
     } catch (e, st) {
       _failCount++;
       _lastAuth = DateTime.now();
-      _logger.error('Yahoo Auth: ❌ Exception during auth (fail #$_failCount)', e, st);
+      _logger.error(
+        'Yahoo Auth: ❌ Exception during auth (fail #$_failCount)',
+        e,
+        st,
+      );
     }
   }
 
@@ -280,8 +300,11 @@ class _YahooAuthManager {
       if (trimmed.isEmpty) continue;
       // Lấy phần trước dấu chấm phẩy đầu tiên (name=value; bỏ; Path=...)
       final int semiIdx = trimmed.indexOf(';');
-      final String nameValue = semiIdx >= 0 ? trimmed.substring(0, semiIdx) : trimmed;
-      if (nameValue.contains('=')) { // Chỉ lấy nếu có dấu = (là cookie hợp lệ)
+      final String nameValue = semiIdx >= 0
+          ? trimmed.substring(0, semiIdx)
+          : trimmed;
+      if (nameValue.contains('=')) {
+        // Chỉ lấy nếu có dấu = (là cookie hợp lệ)
         cookieParts.add(nameValue.trim());
       }
     }
@@ -315,7 +338,7 @@ class YahooFinanceService {
   /// Private constructor — chỉ gọi nội bộ khi khởi tạo static instance.
   /// [client] optional để inject mock trong unit test.
   YahooFinanceService._internal({http.Client? client})
-      : _client = client ?? http.Client() {
+    : _client = client ?? http.Client() {
     _auth = _YahooAuthManager(_client, _logger);
   }
 
@@ -333,19 +356,51 @@ class YahooFinanceService {
   int _v7FailCount = 0;
   DateTime? _v7LastFail;
 
+  // ── Quote Cache: tránh gọi lại API cho cùng mã trong thời gian ngắn ──
+  /// Cache giá cổ phiếu: key = displaySymbol UPPERCASE, value = Stock.
+  final Map<String, Stock> _quoteCache = <String, Stock>{};
+
+  /// Thời điểm cache được cập nhật lần cuối.
+  DateTime? _quoteCacheTime;
+
+  /// TTL của quote cache — 60 giây (đủ nhanh cho realtime, đủ chậm để giảm tải).
+  static const Duration _quoteCacheTtl = Duration(seconds: 60);
+
+  /// Kiểm tra quote cache còn hợp lệ không.
+  bool get _isQuoteCacheValid =>
+      _quoteCacheTime != null &&
+      DateTime.now().difference(_quoteCacheTime!) < _quoteCacheTtl &&
+      _quoteCache.isNotEmpty;
+
+  /// Xóa quote cache (gọi khi pull-to-refresh).
+  void invalidateQuoteCache() {
+    _quoteCache.clear();
+    _quoteCacheTime = null;
+  }
+
+  /// Timeout cho mỗi HTTP request — tránh treo vô hạn khi mạng yếu.
+  static const Duration _httpTimeout = Duration(seconds: 10);
+
   // ===========================================================================
   // Helper Methods (dùng nội bộ)
   // ===========================================================================
 
   /// Chuyển đổi mã cổ phiếu display sang định dạng Yahoo Finance API.
   ///
-  /// Yahoo Finance VN dùng hậu tố `.VN`: "FPT" → "FPT.VN"
+  /// Tra cứu trong [kStockSymbolLookup] để lấy đúng hậu tố (.VN hoặc .HN).
+  /// Nếu không tìm thấy, fallback về `.VN` (phổ biến nhất).
   /// Chỉ số thị trường giữ nguyên: "^VNINDEX" → "^VNINDEX"
   String toYahooSymbol(String symbol) {
     final String upper = symbol.toUpperCase().trim();
-    if (upper.startsWith('^')) return upper;   // Chỉ số: giữ nguyên
-    if (upper.endsWith('.VN')) return upper;   // Đã có hậu tố: giữ nguyên
-    return '$upper.VN';                        // Thêm hậu tố .VN
+    if (upper.startsWith('^')) return upper; // Chỉ số: giữ nguyên
+    if (upper.endsWith('.VN') || upper.endsWith('.HN'))
+      return upper; // Đã có hậu tố
+
+    // Tra cứu trong danh sách constants để lấy đúng apiSymbol (VD: PVS → PVS.HN)
+    final StockSymbol? known = kStockSymbolLookup[upper];
+    if (known != null) return known.apiSymbol;
+
+    return '$upper.VN'; // Fallback: hậu tố .VN cho HOSE/UPCOM
   }
 
   /// Gửi GET request với xác thực Yahoo tự động.
@@ -362,23 +417,36 @@ class YahooFinanceService {
     final Uri requestUri = _auth.withCrumb(uri);
 
     _logger.logApiCall('GET', requestUri.toString());
-    http.Response response = await _client.get(requestUri, headers: _auth.headers);
-    _logger.logApiResponse(requestUri.toString(),
-        statusCode: response.statusCode, body: '(${response.body.length} bytes)');
+    http.Response response = await _client
+        .get(requestUri, headers: _auth.headers)
+        .timeout(_httpTimeout); // Timeout: tránh treo khi mạng yếu
+    _logger.logApiResponse(
+      requestUri.toString(),
+      statusCode: response.statusCode,
+      body: '(${response.body.length} bytes)',
+    );
 
     // Xác thực hết hạn giữa chừng → xin lại và thử lại 1 lần
     // Chỉ retry nếu auth chưa fail quá nhiều (tránh vòng lặp vô tận)
-    if ((response.statusCode == 401 || response.statusCode == 403) && _auth.hasAuth) {
-      _logger.warning('Yahoo: Got ${response.statusCode}, re-authenticating...');
-      _auth.invalidate();               // Xóa auth cũ
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        _auth.hasAuth) {
+      _logger.warning(
+        'Yahoo: Got ${response.statusCode}, re-authenticating...',
+      );
+      _auth.invalidate(); // Xóa auth cũ
       await _auth.ensureAuth(force: true); // Bắt buộc xin lại
 
       // Chỉ retry nếu auth thành công (có crumb mới)
       if (_auth.crumb != null) {
         final Uri retryUri = _auth.withCrumb(uri); // URI mới với crumb mới
-        response = await _client.get(retryUri, headers: _auth.headers);
-        _logger.logApiResponse(retryUri.toString(),
-            statusCode: response.statusCode, body: '(${response.body.length} bytes)');
+        response = await _client
+            .get(retryUri, headers: _auth.headers)
+            .timeout(_httpTimeout);
+        _logger.logApiResponse(
+          retryUri.toString(),
+          statusCode: response.statusCode,
+          body: '(${response.body.length} bytes)',
+        );
       }
     }
 
@@ -408,7 +476,9 @@ class YahooFinanceService {
         await Future<void>.delayed(Duration(milliseconds: 800 * attempt));
       }
     }
-    throw StateError('Unreachable'); // Compiler cần dòng này dù không bao giờ chạy
+    throw StateError(
+      'Unreachable',
+    ); // Compiler cần dòng này dù không bao giờ chạy
   }
 
   // ===========================================================================
@@ -422,11 +492,60 @@ class YahooFinanceService {
   /// 2. Fallback sang `v8/finance/chart` (ít bị chặn auth hơn, chạy song song)
   ///
   /// [symbols]: danh sách mã display (vd: ['FPT', 'VNM', 'VCB'])
-  Future<List<Stock>> fetchQuotes(List<String> symbols) async {
+  Future<List<Stock>> fetchQuotes(
+    List<String> symbols, {
+    bool useCache = true,
+  }) async {
+    if (symbols.isEmpty) return <Stock>[];
+
+    // ── Kiểm tra quote cache trước khi gọi API ──
+    if (useCache && _isQuoteCacheValid) {
+      final List<Stock> cached = <Stock>[];
+      final List<String> uncached = <String>[];
+      for (final String s in symbols) {
+        final Stock? hit = _quoteCache[s.toUpperCase()];
+        if (hit != null) {
+          cached.add(hit);
+        } else {
+          uncached.add(s);
+        }
+      }
+      // Tất cả đã có trong cache → trả về luôn, không gọi API
+      if (uncached.isEmpty) {
+        _logger.info('fetchQuotes: 🎯 Cache hit cho ${cached.length} mã');
+        return cached;
+      }
+      // Một phần có cache → chỉ fetch những mã chưa có
+      if (cached.isNotEmpty) {
+        _logger.info(
+          'fetchQuotes: Partial cache hit ${cached.length}/${symbols.length}, fetching ${uncached.length} remaining...',
+        );
+        final List<Stock> freshStocks = await _fetchQuotesInternal(uncached);
+        // Cập nhật cache
+        for (final Stock stock in freshStocks) {
+          _quoteCache[stock.symbol.toUpperCase()] = stock;
+        }
+        return [...cached, ...freshStocks];
+      }
+    }
+
+    // Không có cache → fetch toàn bộ
+    final List<Stock> results = await _fetchQuotesInternal(symbols);
+    // Cập nhật cache
+    _quoteCacheTime = DateTime.now();
+    for (final Stock stock in results) {
+      _quoteCache[stock.symbol.toUpperCase()] = stock;
+    }
+    return results;
+  }
+
+  /// Logic fetch thật (không qua cache), dùng nội bộ.
+  Future<List<Stock>> _fetchQuotesInternal(List<String> symbols) async {
     if (symbols.isEmpty) return <Stock>[];
 
     // Circuit breaker: bỏ qua v7 nếu đã fail >= 2 lần trong 5 phút gần đây
-    final bool skipV7 = _v7FailCount >= 2 &&
+    final bool skipV7 =
+        _v7FailCount >= 2 &&
         _v7LastFail != null &&
         DateTime.now().difference(_v7LastFail!) < const Duration(minutes: 5);
 
@@ -444,9 +563,13 @@ class YahooFinanceService {
 
     // Fallback sang v8/chart nếu v7 lỗi hoặc bị bỏ qua
     if (skipV7) {
-      _logger.info('fetchQuotes: v7 circuit breaker mở, dùng thẳng v8/chart...');
+      _logger.info(
+        'fetchQuotes: v7 circuit breaker mở, dùng thẳng v8/chart...',
+      );
     } else {
-      _logger.info('fetchQuotes: v7 lỗi, quay số với endpoint dự phòng v8/chart...');
+      _logger.info(
+        'fetchQuotes: v7 lỗi, quay số với endpoint dự phòng v8/chart...',
+      );
     }
     return _fetchQuotesViaChart(symbols);
   }
@@ -509,15 +632,22 @@ class YahooFinanceService {
         final Map<String, dynamic> q = item as Map<String, dynamic>;
         // "FPT.VN" → "FPT" để hiển thị trên UI
         final String rawSymbol = (q['symbol'] as String? ?? '');
-        final String displaySymbol = rawSymbol.replaceAll('.VN', '').toUpperCase();
+        final String displaySymbol = rawSymbol
+            .replaceAll('.VN', '')
+            .replaceAll('.HN', '')
+            .toUpperCase();
 
         return Stock(
           symbol: displaySymbol,
-          name: q['longName'] as String? ?? q['shortName'] as String? ?? displaySymbol,
+          name:
+              q['longName'] as String? ??
+              q['shortName'] as String? ??
+              displaySymbol,
           // as num? → an toàn với cả int và double từ JSON
           // ?.toDouble() → null-safe convert
           price: (q['regularMarketPrice'] as num?)?.toDouble() ?? 0,
-          changePercent: (q['regularMarketChangePercent'] as num?)?.toDouble() ?? 0,
+          changePercent:
+              (q['regularMarketChangePercent'] as num?)?.toDouble() ?? 0,
           volume: (q['regularMarketVolume'] as num?)?.toInt() ?? 0,
           apiSymbol: rawSymbol,
           dayHigh: (q['regularMarketDayHigh'] as num?)?.toDouble(),
@@ -544,24 +674,31 @@ class YahooFinanceService {
   /// { "chart": { "result": [{ "meta": { "regularMarketPrice": 125000 } }] } }
   /// ```
   Future<List<Stock>> _fetchQuotesViaChart(List<String> symbols) async {
+    // Chia thành batch nhỏ (10 mã/batch) — tăng từ 5 để giảm số round-trip
+    // nhưng giữ đủ nhỏ để tránh bị Yahoo rate-limit.
+    const int batchSize = 10;
+    final List<List<String>> batches = <List<String>>[];
+    for (int i = 0; i < symbols.length; i += batchSize) {
+      batches.add(symbols.skip(i).take(batchSize).toList());
+    }
+
+    // Chạy TẤT CẢ batches SONG SONG (thay vì tuần tự từng batch)
+    // Mỗi batch bên trong cũng chạy song song → nested parallelism
+    final List<List<Stock?>> allBatchResults = await Future.wait(
+      batches.map(
+        (List<String> batch) => Future.wait(
+          batch.map((String symbol) => _fetchSingleChartQuote(symbol)),
+        ),
+      ),
+    );
+
+    // Flatten kết quả và lọc null
     final List<Stock> stocks = <Stock>[];
-
-    // Chia thành batch nhỏ (5 mã/batch) để tránh rate-limit
-    const int batchSize = 5;
-    for (int batchStart = 0; batchStart < symbols.length; batchStart += batchSize) {
-      final List<String> batch = symbols.skip(batchStart).take(batchSize).toList();
-
-      // Chạy song song trong mỗi batch
-      final List<Stock?> batchResults = await Future.wait(
-        batch.map((String symbol) => _fetchSingleChartQuote(symbol)),
-      );
-
-      // Lọc null (mã lỗi) và thêm vào danh sách
+    for (final List<Stock?> batchResults in allBatchResults) {
       for (final Stock? stock in batchResults) {
         if (stock != null) stocks.add(stock);
       }
     }
-
     return stocks;
   }
 
@@ -578,35 +715,47 @@ class YahooFinanceService {
       final http.Response response = await _authGet(uri);
       if (response.statusCode != 200) return null; // Bỏ qua mã lỗi
 
-      final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+      final Map<String, dynamic> data =
+          jsonDecode(response.body) as Map<String, dynamic>;
       // Chuỗi drill-down: data → chart → result → [0]
       final List<dynamic>? results =
           (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
       if (results == null || results.isEmpty) return null;
 
       final Map<String, dynamic> result = results.first as Map<String, dynamic>;
-      final Map<String, dynamic>? meta = result['meta'] as Map<String, dynamic>?;
+      final Map<String, dynamic>? meta =
+          result['meta'] as Map<String, dynamic>?;
       if (meta == null) return null;
 
-      final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
+      final double price =
+          (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
       // chartPreviousClose ưu tiên hơn previousClose (Yahoo dùng tên khác nhau)
-      final double prevClose = (meta['chartPreviousClose'] as num?)?.toDouble() ??
+      final double prevClose =
+          (meta['chartPreviousClose'] as num?)?.toDouble() ??
           (meta['previousClose'] as num?)?.toDouble() ??
           price; // Fallback = bằng giá hiện tại (change = 0%)
       // Tính % thay đổi thủ công: ((giá mới - giá cũ) / giá cũ * 100)
-      final double changePercent = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
+      final double changePercent = prevClose != 0
+          ? ((price - prevClose) / prevClose * 100)
+          : 0;
 
-      final String displaySymbol = symbol.toUpperCase().replaceAll('.VN', '');
+      final String displaySymbol = symbol
+          .toUpperCase()
+          .replaceAll('.VN', '')
+          .replaceAll('.HN', '');
 
       // Lấy volume từ cấu trúc indicators.quote[0].volume (phức tạp hơn)
       int volume = 0;
-      final Map<String, dynamic>? indicators = result['indicators'] as Map<String, dynamic>?;
+      final Map<String, dynamic>? indicators =
+          result['indicators'] as Map<String, dynamic>?;
       final List<dynamic>? quoteList = indicators?['quote'] as List<dynamic>?;
       if (quoteList != null && quoteList.isNotEmpty) {
-        final Map<String, dynamic> quote = quoteList.first as Map<String, dynamic>;
+        final Map<String, dynamic> quote =
+            quoteList.first as Map<String, dynamic>;
         final List<dynamic>? volumes = quote['volume'] as List<dynamic>?;
         if (volumes != null && volumes.isNotEmpty) {
-          volume = (volumes.last as num?)?.toInt() ?? 0; // `.last` = nến gần nhất
+          volume =
+              (volumes.last as num?)?.toInt() ?? 0; // `.last` = nến gần nhất
         }
       }
 
@@ -615,7 +764,10 @@ class YahooFinanceService {
 
       return Stock(
         symbol: displaySymbol,
-        name: knownSymbol?.companyName ?? meta['shortName'] as String? ?? displaySymbol,
+        name:
+            knownSymbol?.companyName ??
+            meta['shortName'] as String? ??
+            displaySymbol,
         price: price,
         changePercent: changePercent,
         volume: volume,
@@ -648,21 +800,32 @@ class YahooFinanceService {
     // Cấu hình 2 chỉ số cần lấy
     // chartSymbol: dùng cho v8/chart (URL-encoded, không có ^)
     final List<Map<String, String>> indexConfigs = <Map<String, String>>[
-      <String, String>{'symbol': '^VNINDEX', 'name': 'VN-Index', 'chartSymbol': '%5EVNINDEX'},
-      <String, String>{'symbol': '^HNXI', 'name': 'HNX', 'chartSymbol': '%5EHNXI'},
+      <String, String>{
+        'symbol': '^VNINDEX',
+        'name': 'VN-Index',
+        'chartSymbol': '%5EVNINDEX',
+      },
+      <String, String>{
+        'symbol': '^HNXI',
+        'name': 'HNX',
+        'chartSymbol': '%5EHNXI',
+      },
     ];
 
     final List<MarketIndex> results = <MarketIndex>[];
 
     // Circuit breaker: bỏ qua v7 nếu đã fail nhiều lần gần đây
-    final bool skipV7 = _v7FailCount >= 2 &&
+    final bool skipV7 =
+        _v7FailCount >= 2 &&
         _v7LastFail != null &&
         DateTime.now().difference(_v7LastFail!) < const Duration(minutes: 5);
 
     // Cách 1: v7/quote batch request cho tất cả chỉ số
     if (!skipV7) {
       try {
-        final String symbols = indexConfigs.map((Map<String, String> c) => c['symbol']!).join(',');
+        final String symbols = indexConfigs
+            .map((Map<String, String> c) => c['symbol']!)
+            .join(',');
 
         final Uri uri = Uri.parse(
           'https://query1.finance.yahoo.com/v7/finance/quote'
@@ -674,23 +837,33 @@ class YahooFinanceService {
         final http.Response response = await _authGet(uri);
 
         if (response.statusCode == 200) {
-          final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+          final Map<String, dynamic> data =
+              jsonDecode(response.body) as Map<String, dynamic>;
           final List<dynamic>? quotes =
-              (data['quoteResponse'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
+              (data['quoteResponse'] as Map<String, dynamic>?)?['result']
+                  as List<dynamic>?;
 
           if (quotes != null && quotes.isNotEmpty) {
             for (final Map<String, String> config in indexConfigs) {
               // Tìm quote khớp symbol trong result list
-              final Map<String, dynamic>? q = _findQuoteBySymbol(quotes, config['symbol']!);
+              final Map<String, dynamic>? q = _findQuoteBySymbol(
+                quotes,
+                config['symbol']!,
+              );
 
               if (q != null) {
-                results.add(MarketIndex(
-                  name: config['name']!,
-                  value: (q['regularMarketPrice'] as num?)?.toDouble() ?? 0,
-                  changePercent: (q['regularMarketChangePercent'] as num?)?.toDouble() ?? 0,
-                  previousClose: (q['regularMarketPreviousClose'] as num?)?.toDouble(),
-                  change: (q['regularMarketChange'] as num?)?.toDouble(),
-                ));
+                results.add(
+                  MarketIndex(
+                    name: config['name']!,
+                    value: (q['regularMarketPrice'] as num?)?.toDouble() ?? 0,
+                    changePercent:
+                        (q['regularMarketChangePercent'] as num?)?.toDouble() ??
+                        0,
+                    previousClose: (q['regularMarketPreviousClose'] as num?)
+                        ?.toDouble(),
+                    change: (q['regularMarketChange'] as num?)?.toDouble(),
+                  ),
+                );
               }
             }
 
@@ -716,19 +889,25 @@ class YahooFinanceService {
           final http.Response response = await _authGet(uri);
 
           if (response.statusCode == 200) {
-            final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+            final Map<String, dynamic> data =
+                jsonDecode(response.body) as Map<String, dynamic>;
             final List<dynamic>? results =
-                (data['chart'] as Map<String, dynamic>?)?['result'] as List<dynamic>?;
+                (data['chart'] as Map<String, dynamic>?)?['result']
+                    as List<dynamic>?;
 
             if (results != null && results.isNotEmpty) {
               final Map<String, dynamic> meta =
-                  (results.first as Map<String, dynamic>)['meta'] as Map<String, dynamic>;
-              final double price = (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
+                  (results.first as Map<String, dynamic>)['meta']
+                      as Map<String, dynamic>;
+              final double price =
+                  (meta['regularMarketPrice'] as num?)?.toDouble() ?? 0;
               final double prevClose =
                   (meta['chartPreviousClose'] as num?)?.toDouble() ??
                   (meta['previousClose'] as num?)?.toDouble() ??
                   price;
-              final double changePct = prevClose != 0 ? ((price - prevClose) / prevClose * 100) : 0;
+              final double changePct = prevClose != 0
+                  ? ((price - prevClose) / prevClose * 100)
+                  : 0;
 
               return MarketIndex(
                 name: config['name']!,
@@ -751,11 +930,13 @@ class YahooFinanceService {
       if (chartResults[i] != null) {
         results.add(chartResults[i]!);
       } else {
-        results.add(MarketIndex(
-          name: indexConfigs[i]['name']!,
-          value: 0,
-          changePercent: 0,
-        ));
+        results.add(
+          MarketIndex(
+            name: indexConfigs[i]['name']!,
+            value: 0,
+            changePercent: 0,
+          ),
+        );
       }
     }
 
@@ -763,7 +944,10 @@ class YahooFinanceService {
   }
 
   /// Tìm 1 quote object trong list result theo symbol chính xác.
-  Map<String, dynamic>? _findQuoteBySymbol(List<dynamic> quotes, String symbol) {
+  Map<String, dynamic>? _findQuoteBySymbol(
+    List<dynamic> quotes,
+    String symbol,
+  ) {
     for (final dynamic item in quotes) {
       final Map<String, dynamic> q = item as Map<String, dynamic>;
       if (q['symbol'] == symbol) return q;
@@ -778,35 +962,51 @@ class YahooFinanceService {
   ///
   /// Ưu tiên [symbolModels] → [symbols] → danh sách mặc định [kTrackedStockSymbols].
   Future<List<Stock>> fetchWatchlist({
-    List<StockSymbol>? symbols,         // Từ constants/hardcoded
+    List<StockSymbol>? symbols, // Từ constants/hardcoded
     List<StockSymbolModel>? symbolModels, // Từ API search
+    bool useCache = true, // Cho phép dùng quote cache
   }) async {
     final List<String> displaySymbols;
 
     // Ưu tiên: symbolModels > symbols > default constants
     if (symbolModels != null && symbolModels.isNotEmpty) {
-      displaySymbols = symbolModels.map((StockSymbolModel s) => s.displaySymbol).toList();
+      displaySymbols = symbolModels
+          .map((StockSymbolModel s) => s.displaySymbol)
+          .toList();
     } else if (symbols != null && symbols.isNotEmpty) {
       displaySymbols = symbols.map((StockSymbol s) => s.displaySymbol).toList();
     } else {
-      displaySymbols = kTrackedStockSymbols.map((StockSymbol s) => s.displaySymbol).toList();
+      displaySymbols = kTrackedStockSymbols
+          .map((StockSymbol s) => s.displaySymbol)
+          .toList();
     }
 
-    final List<Stock> allStocks = <Stock>[];
-    const int chunkSize = 15; // Yahoo an toàn với <= 15 symbols/request
-
-    // Duyệt qua từng chunk
+    // Chia thành chunks 15 mã mỗi lần (giới hạn URL Yahoo)
+    const int chunkSize = 15;
+    final List<List<String>> chunks = <List<String>>[];
     for (int i = 0; i < displaySymbols.length; i += chunkSize) {
-      // skip(i): bỏ qua i phần tử đầu; take(chunkSize): lấy tối đa chunkSize
-      final List<String> chunk = displaySymbols.skip(i).take(chunkSize).toList();
-      try {
-        final List<Stock> stocks = await fetchQuotes(chunk);
-        allStocks.addAll(stocks);
-      } catch (e) {
-        _logger.warning('Failed to fetch chunk starting at $i: $e');
-      }
+      chunks.add(displaySymbols.skip(i).take(chunkSize).toList());
     }
 
+    // Chạy TẤT CẢ chunks SONG SONG thay vì tuần tự
+    // Trước: chunk1 xong → chunk2 xong → chunk3 (tổng = 3x latency)
+    // Sau:   chunk1 + chunk2 + chunk3 cùng lúc (tổng = 1x latency)
+    final List<List<Stock>> chunkResults = await Future.wait(
+      chunks.map((List<String> chunk) async {
+        try {
+          return await fetchQuotes(chunk, useCache: useCache);
+        } catch (e) {
+          _logger.warning('Failed to fetch chunk: $e');
+          return <Stock>[];
+        }
+      }),
+    );
+
+    // Flatten kết quả
+    final List<Stock> allStocks = <Stock>[];
+    for (final List<Stock> chunkStocks in chunkResults) {
+      allStocks.addAll(chunkStocks);
+    }
     return allStocks;
   }
 
@@ -833,7 +1033,9 @@ class YahooFinanceService {
       final http.Response response = await _authGet(uri);
 
       if (response.statusCode != 200) {
-        return <StockPricePoint>[]; // Trả về rỗng thay vì throw → UI xử lý gracefully
+        return <
+          StockPricePoint
+        >[]; // Trả về rỗng thay vì throw → UI xử lý gracefully
       }
 
       // useDateLabel: nếu không phải 1d → dùng nhãn ngày/tháng thay vì giờ:phút
@@ -848,7 +1050,12 @@ class YahooFinanceService {
     String displaySymbol, {
     String? apiSymbol,
   }) async {
-    return fetchChart(displaySymbol, apiSymbol: apiSymbol, range: '1d', interval: '30m');
+    return fetchChart(
+      displaySymbol,
+      apiSymbol: apiSymbol,
+      range: '1d',
+      interval: '30m',
+    );
   }
 
   /// Shortcut: Lấy biểu đồ lịch sử 1 tháng (mỗi nến = 1 ngày).
@@ -858,7 +1065,12 @@ class YahooFinanceService {
     String displaySymbol, {
     String? apiSymbol,
   }) async {
-    return fetchChart(displaySymbol, apiSymbol: apiSymbol, range: '1mo', interval: '1d');
+    return fetchChart(
+      displaySymbol,
+      apiSymbol: apiSymbol,
+      range: '1mo',
+      interval: '1d',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -884,10 +1096,15 @@ class YahooFinanceService {
   /// ```
   ///
   /// [useDateLabel]: true → nhãn "DD/MM", false → nhãn "HH:mm"
-  List<StockPricePoint> _parseChartResponse(String body, {required bool useDateLabel}) {
+  List<StockPricePoint> _parseChartResponse(
+    String body, {
+    required bool useDateLabel,
+  }) {
     try {
-      final Map<String, dynamic> data = jsonDecode(body) as Map<String, dynamic>;
-      final Map<String, dynamic>? chart = data['chart'] as Map<String, dynamic>?;
+      final Map<String, dynamic> data =
+          jsonDecode(body) as Map<String, dynamic>;
+      final Map<String, dynamic>? chart =
+          data['chart'] as Map<String, dynamic>?;
       final List<dynamic>? results = chart?['result'] as List<dynamic>?;
 
       if (results == null || results.isEmpty) return <StockPricePoint>[];
@@ -895,7 +1112,8 @@ class YahooFinanceService {
       final Map<String, dynamic> result = results.first as Map<String, dynamic>;
       // timestamps: list Unix timestamp (giây kể từ epoch 1970)
       final List<dynamic>? timestamps = result['timestamp'] as List<dynamic>?;
-      final Map<String, dynamic>? indicators = result['indicators'] as Map<String, dynamic>?;
+      final Map<String, dynamic>? indicators =
+          result['indicators'] as Map<String, dynamic>?;
       // quoteList có thể có nhiều phần tử nhưng thường chỉ 1
       final List<dynamic>? quoteList = indicators?['quote'] as List<dynamic>?;
 
@@ -903,13 +1121,16 @@ class YahooFinanceService {
         return <StockPricePoint>[];
       }
 
-      final Map<String, dynamic> quote = quoteList.first as Map<String, dynamic>;
+      final Map<String, dynamic> quote =
+          quoteList.first as Map<String, dynamic>;
       // close: giá đóng cửa mỗi nến (có thể null nếu nến chưa đóng/dữ liệu thiếu)
       final List<dynamic>? closes = quote['close'] as List<dynamic>?;
       if (closes == null) return <StockPricePoint>[];
 
       // An toàn với length không khớp giữa timestamps và closes
-      final int length = timestamps.length < closes.length ? timestamps.length : closes.length;
+      final int length = timestamps.length < closes.length
+          ? timestamps.length
+          : closes.length;
       final List<StockPricePoint> points = <StockPricePoint>[];
 
       for (int i = 0; i < length; i++) {
@@ -920,7 +1141,7 @@ class YahooFinanceService {
         final int timestamp = (timestamps[i] as num).toInt();
         final DateTime time = DateTime.fromMillisecondsSinceEpoch(
           timestamp * 1000, // Nhân 1000: từ giây → milliseconds
-          isUtc: true,       // UTC → sau đó toLocal()
+          isUtc: true, // UTC → sau đó toLocal()
         ).toLocal();
 
         // Định dạng nhãn thời gian:
@@ -929,7 +1150,9 @@ class YahooFinanceService {
             ? '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}'
             : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
-        points.add(StockPricePoint(timeLabel: label, price: closePrice.toDouble()));
+        points.add(
+          StockPricePoint(timeLabel: label, price: closePrice.toDouble()),
+        );
       }
 
       return points;
@@ -963,7 +1186,8 @@ class YahooFinanceService {
       final http.Response response = await _authGet(uri);
       if (response.statusCode != 200) return <StockSymbolModel>[];
 
-      final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+      final Map<String, dynamic> data =
+          jsonDecode(response.body) as Map<String, dynamic>;
       final List<dynamic>? quotes = data['quotes'] as List<dynamic>?;
       if (quotes == null) return <StockSymbolModel>[];
 
@@ -977,13 +1201,18 @@ class YahooFinanceService {
           .map((dynamic item) {
             final Map<String, dynamic> q = item as Map<String, dynamic>;
             final String rawSymbol = q['symbol'] as String? ?? '';
-            final String displaySymbol = rawSymbol.replaceAll('.VN', '').toUpperCase();
+            final String displaySymbol = rawSymbol
+                .replaceAll('.VN', '')
+                .toUpperCase();
 
             return StockSymbolModel(
               displaySymbol: displaySymbol,
               apiSymbol: rawSymbol,
               // Ưu tiên tên đầy đủ (longname) → tên ngắn (shortname) → mã
-              companyName: q['longname'] as String? ?? q['shortname'] as String? ?? displaySymbol,
+              companyName:
+                  q['longname'] as String? ??
+                  q['shortname'] as String? ??
+                  displaySymbol,
               exchange: q['exchange'] as String? ?? 'VN',
             );
           })
@@ -1007,20 +1236,24 @@ class YahooFinanceService {
       return _cachedSymbols!;
     }
 
-    // Bắt đầu từ danh sách hardcoded 30 mã trong constants
+    // Bắt đầu từ danh sách hardcoded trong constants (dùng đúng apiSymbol: .VN hoặc .HN)
     final List<StockSymbolModel> symbols = kTrackedStockSymbols
-        .map((StockSymbol s) => StockSymbolModel(
-              displaySymbol: s.displaySymbol,
-              apiSymbol: '${s.displaySymbol}.VN',
-              companyName: s.companyName,
-              exchange: s.exchange,
-            ))
+        .map(
+          (StockSymbol s) => StockSymbolModel(
+            displaySymbol: s.displaySymbol,
+            apiSymbol: s.apiSymbol, // Dùng apiSymbol gốc (PVS.HN, FPT.VN, etc.)
+            companyName: s.companyName,
+            exchange: s.exchange,
+          ),
+        )
         .toList();
 
     // Thêm mã từ Yahoo Search API (nếu có)
     try {
       final List<StockSymbolModel> searched = await searchSymbols('VN stock');
-      final Set<String> existing = symbols.map((StockSymbolModel s) => s.displaySymbol).toSet();
+      final Set<String> existing = symbols
+          .map((StockSymbolModel s) => s.displaySymbol)
+          .toSet();
       for (final StockSymbolModel s in searched) {
         if (!existing.contains(s.displaySymbol)) {
           symbols.add(s);
@@ -1032,8 +1265,10 @@ class YahooFinanceService {
     }
 
     // Sắp xếp alphabetical để dễ tìm kiếm
-    symbols.sort((StockSymbolModel a, StockSymbolModel b) =>
-        a.displaySymbol.compareTo(b.displaySymbol));
+    symbols.sort(
+      (StockSymbolModel a, StockSymbolModel b) =>
+          a.displaySymbol.compareTo(b.displaySymbol),
+    );
 
     _cachedSymbols = symbols; // Lưu cache
     return symbols;
@@ -1066,7 +1301,8 @@ class YahooFinanceService {
       final http.Response response = await _authGet(uri);
       if (response.statusCode != 200) return _getFallbackNews();
 
-      final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+      final Map<String, dynamic> data =
+          jsonDecode(response.body) as Map<String, dynamic>;
       final List<dynamic>? news = data['news'] as List<dynamic>?;
       if (news == null || news.isEmpty) return _getFallbackNews();
 
@@ -1075,7 +1311,10 @@ class YahooFinanceService {
         // providerPublishTime: Unix timestamp (giây) thời điểm đăng bài
         final int? publishTime = (n['providerPublishTime'] as num?)?.toInt();
         final DateTime published = publishTime != null
-            ? DateTime.fromMillisecondsSinceEpoch(publishTime * 1000, isUtc: true).toLocal()
+            ? DateTime.fromMillisecondsSinceEpoch(
+                publishTime * 1000,
+                isUtc: true,
+              ).toLocal()
             : DateTime.now(); // Fallback = thời gian hiện tại
 
         return MarketNews(

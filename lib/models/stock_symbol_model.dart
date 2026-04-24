@@ -17,10 +17,10 @@ class StockSymbolModel {
   final String? currency;      // Loại tiền tệ (vd: VND)
   final String? type;          // Loại tài sản (vd: EQUITY)
 
-  /// Trả về ký hiệu định dạng chuẩn của Yahoo Finance (hậu tố .VN)
-  /// Ví dụ FPT -> FPT.VN
+  /// Trả về ký hiệu định dạng chuẩn của Yahoo Finance (hậu tố .VN hoặc .HN)
+  /// Ví dụ FPT -> FPT.VN, PVS -> PVS.HN
   String get yahooSymbol {
-    if (apiSymbol.endsWith('.VN') || apiSymbol.startsWith('^')) {
+    if (apiSymbol.endsWith('.VN') || apiSymbol.endsWith('.HN') || apiSymbol.startsWith('^')) {
       return apiSymbol;
     }
     return '$displaySymbol.VN';

@@ -211,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return RefreshIndicator(
             onRefresh: () async {
               MiniSparkline.invalidateCache(); // Xóa cache biểu đồ miniature
+              _apiService.invalidateQuoteCache(); // Xóa cache giá → force fetch mới
               setState(() {
                 _homeDataFuture = _loadData(_watchlistProvider.trackedSymbols);
               });
