@@ -16,6 +16,7 @@ import 'screens/watchlist_manage_screen.dart';
 import 'services/logger_service.dart';
 import 'state/auth_provider.dart';
 import 'state/watchlist_provider.dart';
+import 'state/portfolio_provider.dart';
 
 // =============================================================================
 // ENTRY POINT — main.dart
@@ -86,6 +87,17 @@ class AppBootstrap extends StatelessWidget {
             final String? newUid = auth.uid;
             if (previous == null || newUid != previous.uid) {
               return WatchlistProvider(uid: newUid);
+            }
+            return previous;
+          },
+        ),
+        // PortfolioProvider: tương tự WatchlistProvider, phụ thuộc vào AuthProvider
+        ChangeNotifierProxyProvider<AuthProvider, PortfolioProvider>(
+          create: (_) => PortfolioProvider(),
+          update: (_, AuthProvider auth, PortfolioProvider? previous) {
+            final String? newUid = auth.uid;
+            if (previous == null || newUid != previous.uid) {
+              return PortfolioProvider(uid: newUid);
             }
             return previous;
           },

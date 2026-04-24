@@ -49,7 +49,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCh43VC-aQLrd3PZy1mgjGHiR_iJz2pZ0U',
+    apiKey: '',
     appId: '1:220234329349:web:f4cf52c7c0ec2379015b6c',
     messagingSenderId: '220234329349',
     projectId: 'finance-34150',
@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCh43VC-aQLrd3PZy1mgjGHiR_iJz2pZ0U',
+    apiKey: '',
     appId: '1:220234329349:android:bb9d48a55312bcd1015b6c',
     messagingSenderId: '220234329349',
     projectId: 'finance-34150',

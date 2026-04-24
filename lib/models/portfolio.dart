@@ -1,5 +1,46 @@
 import 'stock.dart';
 
+/// Dữ liệu thô của một khoản đầu tư (dùng để lưu trữ).
+class PortfolioItem {
+  const PortfolioItem({
+    required this.symbol,
+    required this.quantity,
+    required this.averagePrice,
+  });
+
+  final String symbol;
+  final int quantity;
+  final double averagePrice;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'symbol': symbol,
+      'quantity': quantity,
+      'averagePrice': averagePrice,
+    };
+  }
+
+  factory PortfolioItem.fromMap(Map<String, dynamic> map) {
+    return PortfolioItem(
+      symbol: map['symbol'] as String,
+      quantity: (map['quantity'] as num).toInt(),
+      averagePrice: (map['averagePrice'] as num).toDouble(),
+    );
+  }
+
+  PortfolioItem copyWith({
+    String? symbol,
+    int? quantity,
+    double? averagePrice,
+  }) {
+    return PortfolioItem(
+      symbol: symbol ?? this.symbol,
+      quantity: quantity ?? this.quantity,
+      averagePrice: averagePrice ?? this.averagePrice,
+    );
+  }
+}
+
 /// Đại diện cho một khoản đầu tư (một mã cổ phiếu cụ thể) trong Danh mục của người dùng.
 class PortfolioEntry {
   const PortfolioEntry({
